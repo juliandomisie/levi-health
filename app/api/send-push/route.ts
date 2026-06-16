@@ -11,15 +11,15 @@ webpush.setVapidDetails(
 const MESSAGES = {
   morning: {
     title: '🌅 Guten Morgen, Julian!',
-    body: 'Wie war deine Nacht? Starte deinen Morgen-Check-in in Levi Health.',
+    body: 'Nicht vergessen: Wiege dich jetzt — am besten nüchtern für genaue Werte. Wie war deine Nacht?',
   },
   noon: {
-    title: '☀️ Mittagserinnerung',
-    body: 'Hast du heute schon gegessen? Vergiss nicht deine Mahlzeit einzutragen!',
+    title: '☀️ Mittags-Check — 14:00 Uhr',
+    body: 'Gegessen? Wasser getrunken? Schritte gemacht? Kurz in Levi eintragen und Werte messen — dein Körper dankt es dir! 💪',
   },
   evening: {
-    title: '🌙 Gute Nacht bald',
-    body: 'Noch 1-2 Stunden bis zur Schlafenszeit. Entspann dich und trag deinen Schlaf ein.',
+    title: '🌙 Abend-Routine, Julian',
+    body: 'Zeit für deine Supplemente! Magnesium, Omega-3, Vitamin D nicht vergessen. Dimm das Licht, leg das Handy weg — dein Schlaf beginnt jetzt.',
   },
 }
 

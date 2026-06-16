@@ -190,9 +190,9 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <div className="space-y-3">
             {[
-              { emoji: '🌅', label: 'Morgen-Check-in', time: '07:30', desc: 'Wie war deine Nacht?' },
-              { emoji: '☀️', label: 'Mittagserinnerung', time: '12:30', desc: 'Hast du gegessen?' },
-              { emoji: '🌙', label: 'Abend-Erinnerung', time: '20:00', desc: '1-2h vor der Schlafenszeit' },
+              { emoji: '🌅', label: 'Morgen-Check-in', time: '09:00', desc: 'Wiegen + Nacht-Check' },
+              { emoji: '☀️', label: 'Mittags-Erinnerung', time: '14:00', desc: 'Essen, Wasser, Werte eintragen' },
+              { emoji: '🌙', label: 'Abend-Routine', time: '21:00', desc: 'Supplemente + Schlafvorbereitung' },
             ].map(({ emoji, label, time, desc }) => (
               <div key={label} className="flex items-center justify-between bg-secondary rounded-xl px-3 py-2.5">
                 <div>

@@ -8,51 +8,31 @@ type Message = { role: 'user' | 'assistant'; content: string }
 
 const QUICK = ['Wie war mein Schlaf?', 'Heutiger Fokus?', 'Supplement-Tipp?']
 
-function getBestMaleGermanVoice(): SpeechSynthesisVoice | null {
-  const voices = speechSynthesis.getVoices()
-  const prefs = [
-    // iOS/macOS male German voices
-    (v: SpeechSynthesisVoice) => v.lang.startsWith('de') && /markus|stefan|yannick|jan|daniel/i.test(v.name),
-    // Neural/enhanced German voices
-    (v: SpeechSynthesisVoice) => v.lang.startsWith('de') && /neural|premium|enhanced|natural/i.test(v.name),
-    // Non-local German (usually cloud/better quality)
-    (v: SpeechSynthesisVoice) => v.lang === 'de-DE' && !v.localService,
-    (v: SpeechSynthesisVoice) => v.lang === 'de-DE',
-    (v: SpeechSynthesisVoice) => v.lang.startsWith('de'),
-  ]
-  for (const pred of prefs) {
-    const match = voices.find(pred)
-    if (match) return match
-  }
-  return voices[0] ?? null
-}
-
 function speakNatural(text: string) {
   if (!('speechSynthesis' in window)) return
-  speechSynthesis.cancel()
+  window.speechSynthesis.cancel()
 
-  // Split into sentences for more natural pacing
-  const sentences = text.match(/[^.!?]+[.!?]+/g) ?? [text]
+  const utter = new SpeechSynthesisUtterance(text)
+  utter.lang = 'de-DE'
+  utter.rate = 0.85
+  utter.pitch = 0.88
+  utter.volume = 1.0
 
   const doSpeak = () => {
-    let delay = 0
-    sentences.forEach((sentence, i) => {
-      setTimeout(() => {
-        const utter = new SpeechSynthesisUtterance(sentence.trim())
-        utter.lang = 'de-DE'
-        utter.rate = 0.88
-        utter.pitch = 0.92
-        utter.volume = 1.0
-        const voice = getBestMaleGermanVoice()
-        if (voice) utter.voice = voice
-        speechSynthesis.speak(utter)
-      }, delay)
-      delay += sentence.length * 45
-    })
+    const voices = window.speechSynthesis.getVoices()
+    const malePriority = ['markus', 'stefan', 'daniel', 'jan', 'yannick', 'thomas']
+    const voice =
+      voices.find(v => v.lang.startsWith('de') && malePriority.some(n => v.name.toLowerCase().includes(n))) ||
+      voices.find(v => v.lang.startsWith('de') && /premium|enhanced|neural|natural/i.test(v.name)) ||
+      voices.find(v => v.lang === 'de-DE' && !v.localService) ||
+      voices.find(v => v.lang === 'de-DE') ||
+      voices.find(v => v.lang.startsWith('de'))
+    if (voice) utter.voice = voice
+    window.speechSynthesis.speak(utter)
   }
 
-  if (speechSynthesis.getVoices().length === 0) {
-    speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true })
+  if (window.speechSynthesis.getVoices().length === 0) {
+    window.speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true })
   } else {
     doSpeak()
   }

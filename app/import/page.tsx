@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Suspense } from 'react'
+import { createClient } from '@/utils/supabase/client'
 
 function ImportContent() {
   const params = useSearchParams()
@@ -17,9 +18,20 @@ function ImportContent() {
     })
 
     if (Object.keys(data).length > 0) {
-      const today = new Date().toDateString()
+      // Save to localStorage (for same-context access)
       localStorage.setItem('levi_health_today', JSON.stringify(data))
-      localStorage.setItem('levi_health_date', JSON.stringify(today))
+      localStorage.setItem('levi_health_date', JSON.stringify(new Date().toDateString()))
+
+      // Save to Supabase (shared across Safari + PWA)
+      const supabase = createClient()
+      supabase.from('health_data').upsert({
+        id: 'levi_health_today',
+        data,
+        updated_at: new Date().toISOString(),
+      }).then(({ error }) => {
+        if (error) console.error('Supabase save error:', error)
+      })
+
       setStatus(`✓ ${Object.keys(data).length} Werte von Apple Watch gespeichert`)
     } else {
       setStatus('Keine Daten empfangen')

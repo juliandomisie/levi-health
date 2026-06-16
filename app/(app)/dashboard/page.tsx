@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Moon, Zap, Dumbbell, Droplets, Heart, Brain } from 'lucide-react'
+import { createClient } from '@/utils/supabase/client'
 
 function load<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback
@@ -38,33 +39,56 @@ export default function DashboardPage() {
   const [healthData, setHealthData] = useState<Record<string, number | null>>({})
   const [hour, setHour] = useState(0)
 
-  const readData = () => {
+  const readLocal = () => {
     setName(load('levi_name', 'Julian') || 'Julian')
     setWater(load('levi_water_today', 0))
     setMeals(load('levi_meals_today', []))
-    setHealthData(load('levi_health_today', {}))
     setHour(new Date().getHours())
+    const localHealth = load('levi_health_today', {})
+    if (Object.keys(localHealth).length > 0) setHealthData(localHealth)
+  }
+
+  const readFromSupabase = async () => {
+    try {
+      const supabase = createClient()
+      const { data: row } = await supabase
+        .from('health_data')
+        .select('data')
+        .eq('id', 'levi_health_today')
+        .single()
+      if (row?.data && Object.keys(row.data).length > 0) {
+        setHealthData(row.data)
+        localStorage.setItem('levi_health_today', JSON.stringify(row.data))
+      }
+    } catch {
+      // Supabase not available, use localStorage
+    }
   }
 
   useEffect(() => {
-    readData()
-    window.addEventListener('focus', readData)
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) readData()
-    })
+    readLocal()
+    readFromSupabase()
+
+    const onVisible = () => {
+      if (!document.hidden) {
+        readLocal()
+        readFromSupabase()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', readLocal)
     return () => {
-      window.removeEventListener('focus', readData)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', readLocal)
     }
   }, []) // eslint-disable-line
 
   const greeting = hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'
   const totalCalories = meals.reduce((s, m) => s + m.calories, 0)
-
   const hasAnyData = water > 0 || meals.length > 0 || Object.keys(healthData).length > 0
 
   return (
     <div className="space-y-5 pb-4">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold">{greeting}, {name} 👋</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
@@ -72,7 +96,6 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Levi Greeting */}
       <Card className="bg-gradient-to-br from-emerald-950/60 to-teal-950/40 border-emerald-800/30">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
@@ -98,14 +121,13 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-3">
-        <ScoreCard icon={Moon}    label="Schlaf"      value={healthData.sleep_hours ?? '—'} unit={healthData.sleep_hours ? 'h' : ''} color="text-indigo-400" empty={!healthData.sleep_hours} />
-        <ScoreCard icon={Heart}   label="HRV"         value={healthData.hrv ?? '—'} unit={healthData.hrv ? 'ms' : ''} color="text-rose-400" empty={!healthData.hrv} />
-        <ScoreCard icon={Zap}     label="Schritte"    value={healthData.steps ?? '—'} color="text-yellow-400" empty={!healthData.steps} />
-        <ScoreCard icon={Dumbbell} label="Kalorien"   value={totalCalories || '—'} unit={totalCalories ? 'kcal' : ''} color="text-orange-400" empty={!totalCalories} />
-        <ScoreCard icon={Droplets} label="Wasser"     value={water || '—'} unit={water ? 'ml' : ''} color="text-cyan-400" empty={!water} />
-        <ScoreCard icon={Heart}   label="Herzfrequenz" value={healthData.heart_rate ?? '—'} unit={healthData.heart_rate ? 'bpm' : ''} color="text-red-400" empty={!healthData.heart_rate} />
+        <ScoreCard icon={Moon}     label="Schlaf"       value={healthData.sleep_hours ?? '—'} unit={healthData.sleep_hours ? 'h' : ''} color="text-indigo-400" empty={!healthData.sleep_hours} />
+        <ScoreCard icon={Heart}    label="HRV"          value={healthData.hrv ?? '—'} unit={healthData.hrv ? 'ms' : ''} color="text-rose-400" empty={!healthData.hrv} />
+        <ScoreCard icon={Zap}      label="Schritte"     value={healthData.steps ?? '—'} color="text-yellow-400" empty={!healthData.steps} />
+        <ScoreCard icon={Dumbbell} label="Kalorien"     value={totalCalories || '—'} unit={totalCalories ? 'kcal' : ''} color="text-orange-400" empty={!totalCalories} />
+        <ScoreCard icon={Droplets} label="Wasser"       value={water || '—'} unit={water ? 'ml' : ''} color="text-cyan-400" empty={!water} />
+        <ScoreCard icon={Heart}    label="Herzfrequenz" value={healthData.heart_rate ?? '—'} unit={healthData.heart_rate ? 'bpm' : ''} color="text-red-400" empty={!healthData.heart_rate} />
       </div>
 
       {!hasAnyData && (

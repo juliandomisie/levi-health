@@ -1,14 +1,13 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { Utensils, Droplets, Timer, Plus, Flame } from 'lucide-react'
+import { Utensils, Droplets, Timer, Plus, Flame, Camera, X, Trash2, QrCode, Loader2 } from 'lucide-react'
+import jsQR from 'jsqr'
 
-const MACRO_GOALS = { protein: 160, carbs: 220, fat: 70, calories: 2200 }
+type Meal = { id: number; type: string; name: string; protein: number; carbs: number; fat: number; calories: number }
 
 const MEAL_TYPES = [
   { key: 'breakfast', label: 'Frühstück', emoji: '🌅' },
@@ -17,65 +16,146 @@ const MEAL_TYPES = [
   { key: 'snack',     label: 'Snack', emoji: '🍎' },
 ]
 
-function MacroBar({ label, value, goal, color }: { label: string; value: number; goal: number; color: string }) {
-  const pct = Math.min((value / goal) * 100, 100)
+function load<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback
+  try { return JSON.parse(localStorage.getItem(key) ?? '') } catch { return fallback }
+}
+
+function MacroBar({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-muted-foreground">{label}</span>
-        <span className={color}>{value}g / {goal}g</span>
-      </div>
-      <div className="h-2 bg-secondary rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${color.replace('text-','bg-')}`} style={{ width: `${pct}%` }} />
-      </div>
+    <div className="flex justify-between text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={color + ' font-medium'}>{value}g</span>
     </div>
   )
 }
 
 export default function NutritionPage() {
-  const [water, setWater] = useState(1200)
+  const [meals, setMeals] = useState<Meal[]>([])
+  const [water, setWater] = useState(0)
   const [fastStart, setFastStart] = useState<Date | null>(null)
   const [fastElapsed, setFastElapsed] = useState('00:00:00')
-  const [meals, setMeals] = useState([
-    { type: 'breakfast', name: 'Haferflocken mit Beeren', protein: 12, carbs: 58, fat: 6, calories: 340 },
-    { type: 'lunch',     name: 'Hühnchen & Reis',        protein: 48, carbs: 62, fat: 10, calories: 530 },
-  ])
   const [newMeal, setNewMeal] = useState({ name: '', protein: '', carbs: '', fat: '', calories: '', type: 'snack' })
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [calorieGoal, setCalorieGoal] = useState(0)
+  const [showCamera, setShowCamera] = useState(false)
+  const [cameraMode, setCameraMode] = useState<'photo' | 'qr'>('photo')
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState('')
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const qrRef = useRef<NodeJS.Timeout | null>(null)
+
+  useEffect(() => {
+    const todayKey = new Date().toDateString()
+    const lastDay = load<string>('levi_last_day', '')
+    if (lastDay !== todayKey) {
+      localStorage.setItem('levi_last_day', JSON.stringify(todayKey))
+      localStorage.setItem('levi_meals_today', JSON.stringify([]))
+      localStorage.setItem('levi_water_today', JSON.stringify(0))
+    }
+    setMeals(load<Meal[]>('levi_meals_today', []))
+    setWater(load<number>('levi_water_today', 0))
+    setCalorieGoal(load<number>('levi_calorie_goal', 0))
+  }, [])
 
   useEffect(() => {
     if (fastStart) {
-      intervalRef.current = setInterval(() => {
-        const diff = Date.now() - fastStart.getTime()
-        const h = Math.floor(diff / 3600000).toString().padStart(2, '0')
-        const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0')
-        const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0')
+      timerRef.current = setInterval(() => {
+        const d = Date.now() - fastStart.getTime()
+        const h = Math.floor(d / 3600000).toString().padStart(2, '0')
+        const m = Math.floor((d % 3600000) / 60000).toString().padStart(2, '0')
+        const s = Math.floor((d % 60000) / 1000).toString().padStart(2, '0')
         setFastElapsed(`${h}:${m}:${s}`)
       }, 1000)
     } else {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+      if (timerRef.current) clearInterval(timerRef.current)
     }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [fastStart])
 
+  const saveMeals = (updated: Meal[]) => {
+    setMeals(updated)
+    localStorage.setItem('levi_meals_today', JSON.stringify(updated))
+  }
+
+  const saveWater = (val: number) => {
+    const clamped = Math.max(0, val)
+    setWater(clamped)
+    localStorage.setItem('levi_water_today', JSON.stringify(clamped))
+  }
+
   const totals = meals.reduce((acc, m) => ({
-    protein: acc.protein + m.protein,
-    carbs: acc.carbs + m.carbs,
-    fat: acc.fat + m.fat,
-    calories: acc.calories + m.calories,
+    protein: acc.protein + m.protein, carbs: acc.carbs + m.carbs,
+    fat: acc.fat + m.fat, calories: acc.calories + m.calories,
   }), { protein: 0, carbs: 0, fat: 0, calories: 0 })
 
   const addMeal = () => {
     if (!newMeal.name) return
-    setMeals(prev => [...prev, {
-      type: newMeal.type,
-      name: newMeal.name,
-      protein: +newMeal.protein || 0,
-      carbs: +newMeal.carbs || 0,
-      fat: +newMeal.fat || 0,
-      calories: +newMeal.calories || 0,
+    saveMeals([...meals, {
+      id: Date.now(), type: newMeal.type, name: newMeal.name,
+      protein: +newMeal.protein || 0, carbs: +newMeal.carbs || 0,
+      fat: +newMeal.fat || 0, calories: +newMeal.calories || 0,
     }])
     setNewMeal({ name: '', protein: '', carbs: '', fat: '', calories: '', type: 'snack' })
+    setAnalysisResult('')
+  }
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    if (qrRef.current) clearInterval(qrRef.current)
+    setShowCamera(false)
+  }, [])
+
+  const startCamera = async (mode: 'photo' | 'qr') => {
+    setCameraMode(mode)
+    setAnalysisResult('')
+    setShowCamera(true)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      })
+      streamRef.current = stream
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play() }
+      if (mode === 'qr') {
+        qrRef.current = setInterval(() => {
+          if (!videoRef.current || !canvasRef.current) return
+          const ctx = canvasRef.current.getContext('2d')
+          if (!ctx || videoRef.current.videoWidth === 0) return
+          canvasRef.current.width = videoRef.current.videoWidth
+          canvasRef.current.height = videoRef.current.videoHeight
+          ctx.drawImage(videoRef.current, 0, 0)
+          const img = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height)
+          const code = jsQR(img.data, img.width, img.height)
+          if (code) { clearInterval(qrRef.current!); setAnalysisResult(`QR erkannt: ${code.data}`); stopCamera() }
+        }, 300)
+      }
+    } catch { setAnalysisResult('Kamerazugriff nicht möglich'); setShowCamera(false) }
+  }
+
+  const takePhoto = async () => {
+    if (!videoRef.current || !canvasRef.current) return
+    setAnalyzing(true)
+    const ctx = canvasRef.current.getContext('2d')!
+    canvasRef.current.width = videoRef.current.videoWidth
+    canvasRef.current.height = videoRef.current.videoHeight
+    ctx.drawImage(videoRef.current, 0, 0)
+    const image = canvasRef.current.toDataURL('image/jpeg', 0.8)
+    stopCamera()
+    try {
+      const res = await fetch('/api/analyze-food', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image }),
+      })
+      const data = await res.json()
+      if (data.name) {
+        setNewMeal({ name: data.name, protein: String(data.protein ?? ''), carbs: String(data.carbs ?? ''),
+          fat: String(data.fat ?? ''), calories: String(data.calories ?? ''), type: 'snack' })
+        setAnalysisResult(`✓ "${data.name}" erkannt — bitte Werte prüfen & anpassen`)
+      } else { setAnalysisResult('Kein Essen erkannt — bitte manuell eingeben') }
+    } catch { setAnalysisResult('Analyse fehlgeschlagen') }
+    setAnalyzing(false)
   }
 
   return (
@@ -85,20 +165,30 @@ export default function NutritionPage() {
         <h1 className="text-xl font-bold">Ernährung</h1>
       </div>
 
-      {/* Macro Progress */}
+      {/* Calories */}
       <Card className="bg-card border-border">
         <CardContent className="p-4 space-y-3">
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-sm font-semibold">Heute</span>
+          <div className="flex justify-between items-center">
+            <span className="text-sm font-semibold">Kalorien heute</span>
             <div className="flex items-center gap-1">
               <Flame className="w-4 h-4 text-orange-400" />
-              <span className="text-lg font-bold text-orange-400">{totals.calories}</span>
-              <span className="text-xs text-muted-foreground">/ {MACRO_GOALS.calories} kcal</span>
+              <span className="text-xl font-bold text-orange-400">{totals.calories}</span>
+              {calorieGoal > 0 && <span className="text-xs text-muted-foreground">/ {calorieGoal} kcal</span>}
             </div>
           </div>
-          <MacroBar label="Protein" value={totals.protein} goal={MACRO_GOALS.protein} color="text-blue-400" />
-          <MacroBar label="Kohlenhydrate" value={totals.carbs}   goal={MACRO_GOALS.carbs}   color="text-yellow-400" />
-          <MacroBar label="Fett"           value={totals.fat}     goal={MACRO_GOALS.fat}     color="text-purple-400" />
+          {calorieGoal > 0 && (
+            <Progress value={Math.min((totals.calories / calorieGoal) * 100, 100)} className="[&>div]:bg-orange-400" />
+          )}
+          <div className="grid grid-cols-3 gap-3 pt-1">
+            <MacroBar label="Protein" value={totals.protein} color="text-blue-400" />
+            <MacroBar label="Kohlenhydrate" value={totals.carbs} color="text-yellow-400" />
+            <MacroBar label="Fett" value={totals.fat} color="text-purple-400" />
+          </div>
+          {calorieGoal === 0 && (
+            <p className="text-xs text-muted-foreground text-center">
+              Fitnessziel in Einstellungen setzen → Kalorienziel wird berechnet
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -110,16 +200,20 @@ export default function NutritionPage() {
               <Droplets className="w-4 h-4 text-cyan-400" />
               <span className="text-sm font-semibold">Wasser</span>
             </div>
-            <span className="text-lg font-bold text-cyan-400">{water}ml <span className="text-sm text-muted-foreground">/ 2500ml</span></span>
+            <span className="font-bold text-cyan-400">{water}ml <span className="text-xs text-muted-foreground">/ 2500ml</span></span>
           </div>
           <Progress value={(water / 2500) * 100} className="mb-3 [&>div]:bg-cyan-400" />
           <div className="flex gap-2">
             {[150, 250, 500].map(ml => (
-              <Button key={ml} variant="outline" size="sm" onClick={() => setWater(w => w + ml)}
-                className="flex-1 border-cyan-400/30 text-cyan-400 hover:bg-cyan-400/10 text-xs">
-                +{ml}ml
-              </Button>
+              <Button key={ml} variant="outline" size="sm" onClick={() => saveWater(water + ml)}
+                className="flex-1 border-cyan-400/30 text-cyan-400 hover:bg-cyan-400/10 text-xs">+{ml}ml</Button>
             ))}
+            {water > 0 && (
+              <Button variant="outline" size="sm" onClick={() => saveWater(0)}
+                className="border-border text-muted-foreground hover:text-red-400 text-xs px-2">
+                <X className="w-3 h-3" />
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -136,51 +230,116 @@ export default function NutritionPage() {
               <p className="text-3xl font-mono font-bold text-emerald-400">{fastElapsed}</p>
               <p className="text-xs text-muted-foreground mt-1">Fasten läuft · Ziel: 16:00:00</p>
               <Button onClick={() => setFastStart(null)} variant="outline" size="sm"
-                className="mt-3 border-red-500/30 text-red-400 hover:bg-red-500/10">
-                Fasten beenden
-              </Button>
+                className="mt-3 border-red-500/30 text-red-400 hover:bg-red-500/10">Fasten beenden</Button>
             </div>
           ) : (
-            <Button onClick={() => setFastStart(new Date())} className="w-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30">
+            <Button onClick={() => setFastStart(new Date())}
+              className="w-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30">
               Fasten starten
             </Button>
           )}
         </CardContent>
       </Card>
 
-      {/* Meal Log */}
+      {/* Camera Overlay */}
+      {showCamera && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+          <div className="flex items-center justify-between p-4 pt-safe">
+            <span className="text-white font-medium">
+              {cameraMode === 'photo' ? '📸 Essen fotografieren' : '🔍 QR-Code scannen'}
+            </span>
+            <button onClick={stopCamera}><X className="w-6 h-6 text-white" /></button>
+          </div>
+          <div className="flex-1 relative">
+            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            {cameraMode === 'qr' && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-56 h-56 border-2 border-emerald-400 rounded-2xl" />
+              </div>
+            )}
+          </div>
+          <canvas ref={canvasRef} className="hidden" />
+          <div className="p-6 flex justify-center">
+            {cameraMode === 'photo' ? (
+              <button onClick={takePhoto} disabled={analyzing}
+                className="w-16 h-16 rounded-full bg-white border-4 border-emerald-400 flex items-center justify-center">
+                {analyzing ? <Loader2 className="w-6 h-6 animate-spin text-emerald-600" /> : <Camera className="w-6 h-6 text-emerald-600" />}
+              </button>
+            ) : (
+              <p className="text-white/70 text-sm">QR-Code in den Rahmen halten</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Meals */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Mahlzeiten heute</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm">Mahlzeiten heute</CardTitle>
+            <div className="flex gap-3">
+              <button onClick={() => startCamera('qr')} className="text-muted-foreground hover:text-foreground">
+                <QrCode className="w-4 h-4" />
+              </button>
+              <button onClick={() => startCamera('photo')} className="text-muted-foreground hover:text-foreground">
+                <Camera className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-2">
-          {meals.map((meal, i) => {
+          {analysisResult && (
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-xs text-emerald-400">
+              {analysisResult}
+            </div>
+          )}
+          {meals.length === 0 && !analysisResult && (
+            <p className="text-xs text-muted-foreground text-center py-4">
+              Noch keine Mahlzeiten — 📸 Foto oder manuell eintragen
+            </p>
+          )}
+          {meals.map(meal => {
             const mt = MEAL_TYPES.find(t => t.key === meal.type)
             return (
-              <div key={i} className="flex items-center justify-between bg-secondary rounded-xl px-3 py-2">
-                <div>
+              <div key={meal.id} className="flex items-center justify-between bg-secondary rounded-xl px-3 py-2">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-base">{mt?.emoji}</span>
-                    <span className="text-sm font-medium">{meal.name}</span>
+                    <span>{mt?.emoji}</span>
+                    <span className="text-sm font-medium truncate">{meal.name}</span>
                   </div>
                   <span className="text-xs text-muted-foreground ml-6">
                     P {meal.protein}g · K {meal.carbs}g · F {meal.fat}g
                   </span>
                 </div>
-                <span className="text-sm font-bold text-orange-400">{meal.calories} kcal</span>
+                <div className="flex items-center gap-2 ml-2 shrink-0">
+                  <span className="text-sm font-bold text-orange-400">{meal.calories} kcal</span>
+                  <button onClick={() => saveMeals(meals.filter(m => m.id !== meal.id))}
+                    className="text-muted-foreground hover:text-red-400 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             )
           })}
 
-          {/* Add meal */}
-          <div className="border border-dashed border-border rounded-xl p-3 space-y-2">
-            <Input value={newMeal.name} onChange={e => setNewMeal(p => ({...p, name: e.target.value}))}
-              placeholder="Mahlzeit beschreiben..." className="bg-background border-border text-sm" />
-            <div className="grid grid-cols-4 gap-2">
-              {(['protein','carbs','fat','calories'] as const).map(k => (
+          {/* Add form */}
+          <div className="border border-dashed border-border rounded-xl p-3 space-y-2 mt-1">
+            <div className="flex gap-1">
+              {MEAL_TYPES.map(t => (
+                <button key={t.key} onClick={() => setNewMeal(p => ({ ...p, type: t.key }))}
+                  className={`flex-1 py-1 rounded-lg text-xs transition-colors ${
+                    newMeal.type === t.key ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'}`}>
+                  {t.emoji}
+                </button>
+              ))}
+            </div>
+            <Input value={newMeal.name} onChange={e => setNewMeal(p => ({ ...p, name: e.target.value }))}
+              placeholder="Mahlzeit..." className="bg-background border-border text-sm" />
+            <div className="grid grid-cols-4 gap-1.5">
+              {(['protein', 'carbs', 'fat', 'calories'] as const).map(k => (
                 <Input key={k} type="number" value={newMeal[k]}
-                  onChange={e => setNewMeal(p => ({...p, [k]: e.target.value}))}
-                  placeholder={k === 'calories' ? 'kcal' : k[0].toUpperCase()}
+                  onChange={e => setNewMeal(p => ({ ...p, [k]: e.target.value }))}
+                  placeholder={k === 'calories' ? 'kcal' : k === 'protein' ? 'Prot' : k === 'carbs' ? 'Karb' : 'Fett'}
                   className="bg-background border-border text-xs" />
               ))}
             </div>

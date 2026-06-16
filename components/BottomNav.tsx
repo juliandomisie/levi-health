@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Moon, Utensils, Dumbbell, FlaskConical, MessageCircle, Settings } from 'lucide-react'
+import { LayoutDashboard, Moon, Utensils, Dumbbell, FlaskConical, MessageCircle, Settings, AlarmClock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const nav = [
@@ -11,6 +11,7 @@ const nav = [
   { href: '/fitness',    icon: Dumbbell,        label: 'Fitness' },
   { href: '/biomarkers', icon: FlaskConical,    label: 'Werte' },
   { href: '/coach',      icon: MessageCircle,   label: 'Coach' },
+  { href: '/alarm',      icon: AlarmClock,      label: 'Wecker' },
   { href: '/settings',   icon: Settings,        label: 'Settings' },
 ]
 
@@ -26,8 +27,8 @@ export function BottomNav() {
               'flex flex-col items-center gap-0.5 px-1 py-1 rounded-xl transition-colors min-w-0',
               active ? 'text-primary' : 'text-muted-foreground'
             )}>
-              <Icon className={cn('w-[18px] h-[18px]', active && 'drop-shadow-[0_0_6px_rgba(16,185,129,0.6)]')} />
-              <span className="text-[9px] font-medium truncate">{label}</span>
+              <Icon className={cn('w-4 h-4', active && 'drop-shadow-[0_0_6px_rgba(16,185,129,0.6)]')} />
+              <span className="text-[8px] font-medium truncate">{label}</span>
             </Link>
           )
         })}

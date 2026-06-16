@@ -139,7 +139,7 @@ export default function BiomarkersPage() {
                     <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 9 }} axisLine={false} tickLine={false} />
                     <YAxis domain={['auto', 'auto']} hide />
                     <Tooltip contentStyle={{ background: '#1a1f2e', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12 }}
-                      formatter={(v: number) => [`${v} kg`, 'Gewicht']} />
+                      formatter={(v: unknown) => [`${v} kg`, 'Gewicht']} />
                     <Line type="monotone" dataKey="weight" stroke="#3b82f6" strokeWidth={2} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>

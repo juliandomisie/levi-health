@@ -5,7 +5,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Settings, Bell, Watch, Download, User, Target, Clock } from 'lucide-react'
+import { Settings, Bell, Watch, Download, User, Target, Clock, CheckCircle } from 'lucide-react'
 
 const FITNESS_GOALS = [
   { key: 'aufbau', label: 'Muskelaufbau', surplus: 300, emoji: '💪' },
@@ -29,6 +29,9 @@ export default function SettingsPage() {
   const [voice, setVoice] = useState(false)
   const [handsfree, setHandsfree] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [pushSubscribed, setPushSubscribed] = useState(false)
+  const [pushLoading, setPushLoading] = useState(false)
+  const [pushStatus, setPushStatus] = useState('')
 
   useEffect(() => {
     setName(load('levi_name', ''))
@@ -40,7 +43,37 @@ export default function SettingsPage() {
     setNotifTimes(load('levi_notif_times', { morning: '07:30', water: '12:30', evening: '20:00' }))
     setVoice(load('levi_voice', false))
     setHandsfree(load('levi_handsfree', false))
+    setPushSubscribed(load('levi_push_subscribed', false))
   }, [])
+
+  const subscribePush = async () => {
+    setPushLoading(true)
+    setPushStatus('')
+    try {
+      const perm = await Notification.requestPermission()
+      if (perm !== 'granted') { setPushStatus('Erlaubnis verweigert'); setPushLoading(false); return }
+
+      const reg = await navigator.serviceWorker.ready
+      const existing = await reg.pushManager.getSubscription()
+      const sub = existing ?? await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+      })
+
+      await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub }),
+      })
+
+      localStorage.setItem('levi_push_subscribed', JSON.stringify(true))
+      setPushSubscribed(true)
+      setPushStatus('✓ Benachrichtigungen aktiviert!')
+    } catch (e) {
+      setPushStatus('Fehler: ' + (e as Error).message)
+    }
+    setPushLoading(false)
+  }
 
   const save = () => {
     localStorage.setItem('levi_name', JSON.stringify(name))
@@ -149,38 +182,40 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Notifications */}
+      {/* Push Notifications */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2"><Bell className="w-4 h-4" />Benachrichtigungen</CardTitle>
+          <CardTitle className="text-sm flex items-center gap-2"><Bell className="w-4 h-4 text-emerald-400" />Tägliche Erinnerungen</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Label className="text-sm">Push-Benachrichtigungen</Label>
-            <Switch checked={notifications} onCheckedChange={toggleNotifications} />
-          </div>
-          {notifications && (
-            <div className="space-y-2 pt-1">
-              {[
-                { key: 'morning', emoji: '🌅', label: 'Morgen-Briefing' },
-                { key: 'water',   emoji: '💧', label: 'Wasser-Erinnerung' },
-                { key: 'evening', emoji: '🌙', label: 'Abend-Check-in' },
-              ].map(({ key, emoji, label }) => (
-                <div key={key} className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">{emoji} {label}</span>
-                  <Input
-                    type="time"
-                    value={notifTimes[key as keyof typeof notifTimes]}
-                    onChange={e => setNotifTimes(p => ({ ...p, [key]: e.target.value }))}
-                    className="w-24 text-xs bg-secondary border-border h-7"
-                  />
+        <CardContent className="space-y-4">
+          <div className="space-y-3">
+            {[
+              { emoji: '🌅', label: 'Morgen-Check-in', time: '07:30', desc: 'Wie war deine Nacht?' },
+              { emoji: '☀️', label: 'Mittagserinnerung', time: '12:30', desc: 'Hast du gegessen?' },
+              { emoji: '🌙', label: 'Abend-Erinnerung', time: '20:00', desc: '1-2h vor der Schlafenszeit' },
+            ].map(({ emoji, label, time, desc }) => (
+              <div key={label} className="flex items-center justify-between bg-secondary rounded-xl px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-medium">{emoji} {label}</p>
+                  <p className="text-xs text-muted-foreground">{desc} · {time}</p>
                 </div>
-              ))}
+                {pushSubscribed && <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />}
+              </div>
+            ))}
+          </div>
+
+          {pushSubscribed ? (
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-center">
+              <p className="text-sm text-emerald-400 font-medium">✓ Benachrichtigungen aktiv</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Du erhältst täglich 3 Erinnerungen</p>
             </div>
+          ) : (
+            <Button onClick={subscribePush} disabled={pushLoading}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+              {pushLoading ? 'Wird aktiviert...' : '🔔 Benachrichtigungen aktivieren'}
+            </Button>
           )}
-          {!notifications && (
-            <p className="text-xs text-muted-foreground">Aktiviere Benachrichtigungen um Erinnerungszeiten einzustellen.</p>
-          )}
+          {pushStatus && <p className="text-xs text-center text-muted-foreground">{pushStatus}</p>}
         </CardContent>
       </Card>
 

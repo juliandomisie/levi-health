@@ -107,13 +107,13 @@ export default function SettingsPage() {
             <p>• Aktive Kalorien</p>
             <p>• Herzfrequenz (aktuell)</p>
           </div>
-          <a href="/levi-shortcut.shortcut" download="Levi Update.shortcut">
+          <a href="shortcuts://import-shortcut?url=https%3A%2F%2Flevi-health.netlify.app%2Flevi-shortcut.shortcut&name=Levi%20Update">
             <Button size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
-              Shortcut herunterladen &amp; installieren
+              In Kurzbefehle öffnen &amp; installieren
             </Button>
           </a>
           <p className="text-xs text-muted-foreground text-center">
-            Auf iPhone öffnen → &quot;Kurzbefehl hinzufügen&quot; → fertig
+            Nur auf iPhone — öffnet direkt die Kurzbefehle-App
           </p>
         </CardContent>
       </Card>

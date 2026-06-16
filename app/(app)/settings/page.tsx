@@ -100,20 +100,21 @@ export default function SettingsPage() {
           <p className="text-xs text-muted-foreground">
             Installiere den iOS Shortcut auf deinem iPhone um Apple Watch Daten (HRV, Schritte, Kalorien, Schlaf) automatisch an Levi zu senden.
           </p>
-          <div className="bg-secondary rounded-xl p-3 text-xs font-mono text-muted-foreground overflow-x-auto">
-            <p className="text-emerald-400 mb-1">// iOS Shortcut Vorlage</p>
-            <pre className="whitespace-pre-wrap">{`POST /api/health-import
-{
-  "hrv": {{HRV_morgens}},
-  "steps": {{Schritte_heute}},
-  "calories": {{Kalorien}},
-  "sleep_hours": {{Schlaf_h}},
-  "date": "{{Datum}}"
-}`}</pre>
+          <div className="bg-secondary rounded-xl p-3 text-xs text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">Was der Shortcut überträgt:</p>
+            <p>• Herzfrequenzvariabilität (HRV)</p>
+            <p>• Schritte (Tagesgesamt)</p>
+            <p>• Aktive Kalorien</p>
+            <p>• Herzfrequenz (aktuell)</p>
           </div>
-          <Button size="sm" className="w-full bg-secondary hover:bg-secondary/80 text-foreground border border-border">
-            📱 Shortcut-Vorlage herunterladen
-          </Button>
+          <a href="/levi-shortcut.shortcut" download="Levi Update.shortcut">
+            <Button size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+              Shortcut herunterladen &amp; installieren
+            </Button>
+          </a>
+          <p className="text-xs text-muted-foreground text-center">
+            Auf iPhone öffnen → &quot;Kurzbefehl hinzufügen&quot; → fertig
+          </p>
         </CardContent>
       </Card>
 

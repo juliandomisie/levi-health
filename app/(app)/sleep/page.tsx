@@ -1,30 +1,67 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
-import { Moon, Heart, Save, TrendingUp } from 'lucide-react'
-import { mockSleepData, mockHRVTrend } from '@/lib/mock-data'
+import { Moon, Heart, Save, TrendingUp, Trash2 } from 'lucide-react'
+
+type Entry = { date: string; bedtime: string; waketime: string; hours: number; hrv: number; quality: number }
+
+function load<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback
+  try { return JSON.parse(localStorage.getItem(key) ?? '') } catch { return fallback }
+}
 
 export default function SleepPage() {
-  const [bedtime, setBedtime]   = useState('23:00')
-  const [waketime, setWaketime] = useState('07:00')
+  const [bedtime, setBedtime]   = useState('')
+  const [waketime, setWaketime] = useState('')
   const [hrv, setHrv]           = useState('')
   const [quality, setQuality]   = useState<number[]>([7])
   const [saved, setSaved]       = useState(false)
+  const [entries, setEntries]   = useState<Entry[]>([])
 
-  const handleSave = () => { setSaved(true); setTimeout(() => setSaved(false), 2000) }
+  useEffect(() => {
+    setEntries(load<Entry[]>('levi_sleep_entries', []))
+  }, [])
 
-  const hrs = (() => {
-    const [bh, bm] = bedtime.split(':').map(Number)
-    const [wh, wm] = waketime.split(':').map(Number)
+  const calcHours = (b: string, w: string) => {
+    if (!b || !w) return 0
+    const [bh, bm] = b.split(':').map(Number)
+    const [wh, wm] = w.split(':').map(Number)
     let diff = (wh * 60 + wm) - (bh * 60 + bm)
     if (diff < 0) diff += 1440
-    return (diff / 60).toFixed(1)
-  })()
+    return +(diff / 60).toFixed(1)
+  }
+
+  const hours = calcHours(bedtime, waketime)
+
+  const handleSave = () => {
+    if (!bedtime || !waketime) return
+    const entry: Entry = {
+      date: new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
+      bedtime, waketime,
+      hours: calcHours(bedtime, waketime),
+      hrv: +hrv || 0,
+      quality: quality[0],
+    }
+    const updated = [entry, ...entries].slice(0, 30)
+    setEntries(updated)
+    localStorage.setItem('levi_sleep_entries', JSON.stringify(updated))
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const deleteEntry = (i: number) => {
+    const updated = entries.filter((_, idx) => idx !== i)
+    setEntries(updated)
+    localStorage.setItem('levi_sleep_entries', JSON.stringify(updated))
+  }
+
+  const chartData = [...entries].reverse().slice(-14)
+  const hrvData   = entries.filter(e => e.hrv > 0).reverse().slice(-30)
 
   return (
     <div className="space-y-5 pb-4">
@@ -39,7 +76,8 @@ export default function SleepPage() {
           <CardTitle className="text-sm font-medium text-muted-foreground">Heute eintragen</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          {/* Einschlafen + Aufwachen – stacked to avoid overlap */}
+          <div className="space-y-3">
             <div>
               <Label className="text-xs text-muted-foreground">Einschlafen</Label>
               <Input type="time" value={bedtime} onChange={e => setBedtime(e.target.value)}
@@ -52,10 +90,12 @@ export default function SleepPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between bg-secondary rounded-xl px-4 py-3">
-            <span className="text-sm text-muted-foreground">Schlafdauer</span>
-            <span className="text-2xl font-bold text-blue-400">{hrs}h</span>
-          </div>
+          {hours > 0 && (
+            <div className="flex items-center justify-between bg-secondary rounded-xl px-4 py-3">
+              <span className="text-sm text-muted-foreground">Schlafdauer</span>
+              <span className="text-2xl font-bold text-blue-400">{hours}h</span>
+            </div>
+          )}
 
           <div>
             <Label className="text-xs text-muted-foreground">HRV morgens (ms)</Label>
@@ -78,52 +118,87 @@ export default function SleepPage() {
         </CardContent>
       </Card>
 
-      {/* HRV Chart */}
-      <Card className="bg-card border-border">
-        <CardHeader className="pb-2">
-          <div className="flex items-center gap-2">
-            <Heart className="w-4 h-4 text-red-400" />
-            <CardTitle className="text-sm">HRV Verlauf (30 Tage)</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={140}>
-            <LineChart data={mockHRVTrend}>
-              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 9 }} axisLine={false} tickLine={false}
-                interval={6} />
-              <YAxis domain={[40, 100]} hide />
-              <Tooltip contentStyle={{ background: '#1a1f2e', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12 }} />
-              <Line type="monotone" dataKey="hrv" stroke="#ef4444" strokeWidth={2} dot={false} name="HRV (ms)" />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      {/* HRV Chart – nur wenn Daten vorhanden */}
+      {hrvData.length > 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <Heart className="w-4 h-4 text-red-400" />
+              <CardTitle className="text-sm">HRV Verlauf</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={140}>
+              <LineChart data={hrvData}>
+                <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 9 }} axisLine={false} tickLine={false} />
+                <YAxis domain={['auto', 'auto']} hide />
+                <Tooltip contentStyle={{ background: '#1a1f2e', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12 }} />
+                <Line type="monotone" dataKey="hrv" stroke="#ef4444" strokeWidth={2} dot={false} name="HRV (ms)" />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Weekly sleep chart */}
-      <Card className="bg-card border-border">
-        <CardHeader className="pb-2">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-blue-400" />
-            <CardTitle className="text-sm">Schlaf letzte 7 Tage</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={140}>
-            <AreaChart data={mockSleepData}>
-              <defs>
-                <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis domain={[4, 10]} hide />
-              <Tooltip contentStyle={{ background: '#1a1f2e', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12 }} />
-              <Area type="monotone" dataKey="hours" stroke="#3b82f6" fill="url(#sg)" strokeWidth={2} dot={false} name="Stunden" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      {/* Sleep Chart – nur wenn Daten vorhanden */}
+      {chartData.length > 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-blue-400" />
+              <CardTitle className="text-sm">Schlaf Verlauf</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={140}>
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis domain={[0, 12]} hide />
+                <Tooltip contentStyle={{ background: '#1a1f2e', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12 }} />
+                <Area type="monotone" dataKey="hours" stroke="#3b82f6" fill="url(#sg)" strokeWidth={2} dot={false} name="Stunden" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* History */}
+      {entries.length > 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Einträge</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {entries.slice(0, 7).map((e, i) => (
+              <div key={i} className="flex items-center justify-between bg-secondary rounded-xl px-3 py-2">
+                <div>
+                  <span className="text-sm font-medium">{e.date}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{e.bedtime} → {e.waketime}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-bold text-blue-400">{e.hours}h</span>
+                  {e.hrv > 0 && <span className="text-xs text-muted-foreground">HRV {e.hrv}</span>}
+                  <button onClick={() => deleteEntry(i)} className="text-muted-foreground hover:text-red-400">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {entries.length === 0 && (
+        <div className="text-center py-8 text-muted-foreground text-sm">
+          Noch keine Einträge — trag deinen ersten Schlaf ein
+        </div>
+      )}
     </div>
   )
 }

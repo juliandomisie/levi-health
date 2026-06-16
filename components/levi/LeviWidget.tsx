@@ -1,12 +1,47 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X, Send, Mic, MicOff, MessageCircle } from 'lucide-react'
+import { X, Send, Mic, MicOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type Message = { role: 'user' | 'assistant'; content: string }
 
 const QUICK = ['Wie war mein Schlaf?', 'Heutiger Fokus?', 'Supplement-Tipp?']
+
+function getBestVoice(): SpeechSynthesisVoice | null {
+  const voices = speechSynthesis.getVoices()
+  const prefs = [
+    (v: SpeechSynthesisVoice) => v.lang.startsWith('de') && /premium|enhanced|natural|neural/i.test(v.name),
+    (v: SpeechSynthesisVoice) => v.lang === 'de-DE' && !v.localService,
+    (v: SpeechSynthesisVoice) => v.lang === 'de-DE',
+    (v: SpeechSynthesisVoice) => v.lang.startsWith('de'),
+  ]
+  for (const pred of prefs) {
+    const match = voices.find(pred)
+    if (match) return match
+  }
+  return voices[0] ?? null
+}
+
+function speak(text: string) {
+  if (!('speechSynthesis' in window)) return
+  speechSynthesis.cancel()
+  const utter = new SpeechSynthesisUtterance(text)
+  utter.lang = 'de-DE'
+  utter.rate = 0.95
+  utter.pitch = 1.0
+  utter.volume = 1.0
+  const trySpeak = () => {
+    const voice = getBestVoice()
+    if (voice) utter.voice = voice
+    speechSynthesis.speak(utter)
+  }
+  if (speechSynthesis.getVoices().length === 0) {
+    speechSynthesis.addEventListener('voiceschanged', trySpeak, { once: true })
+  } else {
+    trySpeak()
+  }
+}
 
 export function LeviWidget() {
   const [open, setOpen]       = useState(false)
@@ -14,17 +49,29 @@ export function LeviWidget() {
   const [loading, setLoading] = useState(false)
   const [unread, setUnread]   = useState(1)
   const [listening, setListening] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Hey Julian! Ich bin hier wenn du Fragen hast. 💪' }
-  ])
+  const [voiceEnabled, setVoiceEnabled] = useState(false)
+  const [userName, setUserName] = useState('Julian')
+  const [messages, setMessages] = useState<Message[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const recRef    = useRef<any>(null)
 
   useEffect(() => {
-    if (open) { setUnread(0); bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }
+    try {
+      const name = JSON.parse(localStorage.getItem('levi_name') ?? '') || 'Julian'
+      setUserName(name)
+      setMessages([{ role: 'assistant', content: `Hey ${name}! Ich bin hier wenn du Fragen hast. 💪` }])
+      const v = JSON.parse(localStorage.getItem('levi_voice') ?? 'false')
+      setVoiceEnabled(!!v)
+    } catch {
+      setMessages([{ role: 'assistant', content: 'Hey! Ich bin hier wenn du Fragen hast. 💪' }])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (open) { setUnread(0); setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100) }
   }, [open, messages])
 
-  const send = async (text: string) => {
+  const send = useCallback(async (text: string) => {
     if (!text.trim() || loading) return
     const updated = [...messages, { role: 'user' as const, content: text }]
     setMessages(updated)
@@ -37,26 +84,37 @@ export function LeviWidget() {
         body: JSON.stringify({ messages: updated }),
       })
       const data = await res.json()
-      setMessages(p => [...p, { role: 'assistant', content: data.content }])
+      const reply = data.content as string
+      setMessages(p => [...p, { role: 'assistant', content: reply }])
       if (!open) setUnread(n => n + 1)
+      if (voiceEnabled) speak(reply)
     } catch {
       setMessages(p => [...p, { role: 'assistant', content: 'Kurzer Aussetzer – versuch es nochmal!' }])
     } finally { setLoading(false) }
-  }
+  }, [messages, loading, open, voiceEnabled])
 
   const toggleVoice = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) return
     if (listening) { recRef.current?.stop(); setListening(false); return }
-    const r = new SR(); r.lang = 'de-DE'; r.interimResults = false
-    r.onresult = (e: any) => setInput(e.results[0][0].transcript)
+    const r = new SR()
+    r.lang = 'de-DE'
+    r.interimResults = false
+    r.onresult = (e: any) => {
+      const transcript = e.results[0][0].transcript
+      setInput(transcript)
+      if (JSON.parse(localStorage.getItem('levi_handsfree') ?? 'false')) {
+        setTimeout(() => send(transcript), 300)
+      }
+    }
     r.onend = () => setListening(false)
-    recRef.current = r; r.start(); setListening(true)
+    recRef.current = r
+    r.start()
+    setListening(true)
   }
 
   return (
     <>
-      {/* Floating Button */}
       <AnimatePresence>
         {!open && (
           <motion.button
@@ -74,18 +132,15 @@ export function LeviWidget() {
         )}
       </AnimatePresence>
 
-      {/* Chat Panel */}
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ y: '100%', opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
+            initial={{ y: '100%', opacity: 0 }} animate={{ y: 0, opacity: 1 }}
             exit={{ y: '100%', opacity: 0 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             className="fixed inset-x-0 bottom-0 z-50 bg-card border-t border-border rounded-t-2xl shadow-2xl"
             style={{ height: '80vh', maxWidth: 480, margin: '0 auto' }}
           >
-            {/* Header */}
             <div className="flex items-center gap-3 p-4 border-b border-border">
               <div className="w-9 h-9 rounded-full levi-gradient flex items-center justify-center text-white font-bold">L</div>
               <div className="flex-1">
@@ -95,12 +150,12 @@ export function LeviWidget() {
                   Online
                 </p>
               </div>
-              <button onClick={() => setOpen(false)} className="p-1.5 rounded-lg hover:bg-secondary transition-colors">
+              <button onClick={() => { speechSynthesis?.cancel(); setOpen(false) }}
+                className="p-1.5 rounded-lg hover:bg-secondary transition-colors">
                 <X className="w-4 h-4 text-muted-foreground" />
               </button>
             </div>
 
-            {/* Messages */}
             <div className="overflow-y-auto p-4 space-y-3" style={{ height: 'calc(80vh - 180px)' }}>
               {messages.map((m, i) => (
                 <div key={i} className={cn('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
@@ -126,8 +181,7 @@ export function LeviWidget() {
               <div ref={bottomRef} />
             </div>
 
-            {/* Quick replies */}
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 pb-2">
+            <div className="flex gap-2 overflow-x-auto px-4 pb-2">
               {QUICK.map(q => (
                 <button key={q} onClick={() => send(q)}
                   className="flex-shrink-0 text-xs bg-secondary text-muted-foreground px-3 py-1.5 rounded-full border border-border whitespace-nowrap hover:text-foreground transition-colors">
@@ -136,12 +190,10 @@ export function LeviWidget() {
               ))}
             </div>
 
-            {/* Input */}
             <div className="flex gap-2 p-4 pt-0">
               <button onClick={toggleVoice}
                 className={cn('p-2.5 rounded-xl border flex-shrink-0 transition-colors',
-                  listening ? 'bg-red-500/20 border-red-500/40 text-red-400' : 'bg-secondary border-border text-muted-foreground'
-                )}>
+                  listening ? 'bg-red-500/20 border-red-500/40 text-red-400' : 'bg-secondary border-border text-muted-foreground')}>
                 {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
               </button>
               <input value={input} onChange={e => setInput(e.target.value)}

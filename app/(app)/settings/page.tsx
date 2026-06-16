@@ -207,14 +207,16 @@ export default function SettingsPage() {
           <CardTitle className="text-sm flex items-center gap-2"><Watch className="w-4 h-4" />Apple Watch Integration</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="bg-secondary rounded-xl p-3 text-xs text-muted-foreground space-y-1">
-            <p className="font-medium text-foreground">Automatisch übertragen:</p>
-            <p>• HRV · Herzfrequenz · Schritte</p>
-            <p>• Aktive Kalorien · Schlaf · Training</p>
+          <div className="bg-secondary rounded-xl p-3 text-xs text-muted-foreground space-y-2">
+            <p className="font-medium text-foreground">Shortcut URL-Format (letzter Schritt):</p>
+            <p className="font-mono text-[10px] break-all text-emerald-400">
+              https://levi-health.netlify.app/import?hrv=WERT&steps=WERT&calories=WERT&heart_rate=WERT&sleep_hours=WERT&workout_minutes=WERT
+            </p>
+            <p className="text-[10px]">Im Shortcut: "URL öffnen" als letzter Schritt — ersetze WERT durch die jeweiligen Health-Variablen</p>
           </div>
           <a href="shortcuts://import-shortcut?url=https%3A%2F%2Flevi-health.netlify.app%2Flevi-shortcut.shortcut&name=Levi%20Update">
             <Button size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
-              Shortcut in Kurzbefehle öffnen
+              Shortcut-Vorlage öffnen
             </Button>
           </a>
         </CardContent>

@@ -1,11 +1,12 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { FlaskConical, TrendingUp, TrendingDown, Minus, Plus, ChevronRight } from 'lucide-react'
-import { mockBiomarkers } from '@/lib/mock-data'
+import { FlaskConical, Plus, Trash2 } from 'lucide-react'
+
+type Marker = { id: number; name: string; value: number; unit: string; date: string; status: 'good' | 'warn' | 'bad' }
 
 const STATUS_COLORS = {
   good: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20', badge: 'bg-emerald-500/20 text-emerald-400' },
@@ -20,17 +21,38 @@ const ALL_MARKERS = [
   'ALT','AST','GGT','Kreatinin','eGFR','Harnsäure',
 ]
 
+function load<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback
+  try { return JSON.parse(localStorage.getItem(key) ?? '') } catch { return fallback }
+}
+
 export default function BiomarkersPage() {
-  const [markers, setMarkers] = useState(mockBiomarkers)
+  const [markers, setMarkers] = useState<Marker[]>([])
   const [adding, setAdding] = useState(false)
-  const [newM, setNewM] = useState({ name: '', value: '', unit: '' })
+  const [newM, setNewM] = useState({ name: '', value: '', unit: '', status: 'good' as Marker['status'] })
   const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    setMarkers(load<Marker[]>('levi_biomarkers', []))
+  }, [])
+
+  const save = (updated: Marker[]) => {
+    setMarkers(updated)
+    localStorage.setItem('levi_biomarkers', JSON.stringify(updated))
+  }
 
   const addMarker = () => {
     if (!newM.name || !newM.value) return
-    const val = parseFloat(newM.value)
-    setMarkers(p => [...p, { name: newM.name, value: val, unit: newM.unit, optimal: '–', status: 'good' }])
-    setNewM({ name: '', value: '', unit: '' })
+    save([...markers, {
+      id: Date.now(),
+      name: newM.name,
+      value: parseFloat(newM.value),
+      unit: newM.unit,
+      date: new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }),
+      status: newM.status,
+    }])
+    setNewM({ name: '', value: '', unit: '', status: 'good' })
+    setSearch('')
     setAdding(false)
   }
 
@@ -70,14 +92,14 @@ export default function BiomarkersPage() {
       {adding && (
         <Card className="bg-card border-primary/30">
           <CardContent className="p-4 space-y-3">
-            <Input placeholder="Suche Marker..." value={search}
+            <Input placeholder="Marker suchen..." value={search}
               onChange={e => setSearch(e.target.value)}
               className="bg-secondary border-border" />
-            {search && (
-              <div className="max-h-40 overflow-y-auto space-y-1">
+            {search && filtered.length > 0 && (
+              <div className="max-h-40 overflow-y-auto space-y-1 bg-secondary rounded-xl p-2">
                 {filtered.map(m => (
                   <button key={m} onClick={() => { setNewM(p => ({...p, name: m})); setSearch('') }}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-secondary transition-colors">
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-card transition-colors">
                     {m}
                   </button>
                 ))}
@@ -92,6 +114,16 @@ export default function BiomarkersPage() {
                 onChange={e => setNewM(p => ({...p, unit: e.target.value}))}
                 className="bg-secondary border-border" />
             </div>
+            <div className="flex gap-2">
+              {(['good','warn','bad'] as const).map(s => (
+                <button key={s} onClick={() => setNewM(p => ({...p, status: s}))}
+                  className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${
+                    newM.status === s ? STATUS_COLORS[s].bg + ' ' + STATUS_COLORS[s].text + ' ' + STATUS_COLORS[s].border
+                    : 'border-border text-muted-foreground'}`}>
+                  {s === 'good' ? '✓ Optimal' : s === 'warn' ? '⚠ Warn' : '✗ Kritisch'}
+                </button>
+              ))}
+            </div>
             <Button onClick={addMarker} className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
               Eintragen
             </Button>
@@ -100,32 +132,42 @@ export default function BiomarkersPage() {
       )}
 
       {/* Marker list */}
-      <div className="space-y-2">
-        {markers.map((m, i) => {
-          const c = STATUS_COLORS[m.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.good
-          return (
-            <Card key={i} className={`${c.bg} ${c.border} border`}>
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold">{m.name}</p>
-                    <p className="text-xs text-muted-foreground">Optimal: {m.optimal}</p>
+      {markers.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground text-sm">
+          Noch keine Biomarker — tippe auf + Wert eintragen
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {markers.map((m) => {
+            const c = STATUS_COLORS[m.status]
+            return (
+              <Card key={m.id} className={`${c.bg} ${c.border} border`}>
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">{m.name}</p>
+                      <p className="text-xs text-muted-foreground">{m.date}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className={`text-xl font-bold ${c.text}`}>{m.value}</p>
+                        <p className="text-xs text-muted-foreground">{m.unit}</p>
+                      </div>
+                      <button onClick={() => save(markers.filter(x => x.id !== m.id))}
+                        className="text-muted-foreground hover:text-red-400 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className={`text-xl font-bold ${c.text}`}>{m.value}</p>
-                    <p className="text-xs text-muted-foreground">{m.unit}</p>
-                  </div>
-                </div>
-                <div className="flex gap-1 mt-2">
-                  <Badge className={`text-xs border-0 ${c.badge}`}>
+                  <Badge className={`text-xs border-0 mt-2 ${c.badge}`}>
                     {m.status === 'good' ? '✓ Optimal' : m.status === 'warn' ? '⚠ Optimierbar' : '✗ Prüfen'}
                   </Badge>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

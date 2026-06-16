@@ -115,18 +115,20 @@ export default function AlarmPage() {
     }))
   }
 
-  const getCtx = () => {
+  const getCtx = async () => {
     if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
-      audioCtxRef.current = new AudioContext()
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
     }
-    if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume()
+    if (audioCtxRef.current.state === 'suspended') {
+      await audioCtxRef.current.resume()
+    }
     return audioCtxRef.current
   }
 
-  const previewTone = () => {
-    const ctx = getCtx()
-    createTone(ctx, selectedTone, volume)
-    if (selectedTone === 'puls') setTimeout(() => createTone(ctx, 'puls', volume), 900)
+  const previewTone = async () => {
+    const ctx = await getCtx()
+    createTone(ctx, selectedTone, volRef.current)
+    if (selectedTone === 'puls') setTimeout(() => createTone(ctx, 'puls', volRef.current), 900)
   }
 
   const scheduleCheck = (time: string) => {
@@ -146,12 +148,12 @@ export default function AlarmPage() {
     }
   }
 
-  const triggerAlarm = () => {
+  const triggerAlarm = async () => {
     setRinging(true)
     setIsActive(false)
     localStorage.setItem('levi_alarm_active', JSON.stringify(false))
     let vol = 0.08
-    const ctx = getCtx()
+    const ctx = await getCtx()
     const ring = () => createTone(ctx, selectedTone, vol)
     ring()
     ringRef.current = setInterval(() => {

@@ -35,6 +35,7 @@ export default function NutritionPage() {
   const [water, setWater] = useState(0)
   const [fastStart, setFastStart] = useState<Date | null>(null)
   const [fastElapsed, setFastElapsed] = useState('00:00:00')
+  const [showAdd, setShowAdd] = useState(false)
   const [newMeal, setNewMeal] = useState({ name: '', protein: '', carbs: '', fat: '', calories: '', type: 'snack' })
   const [calorieGoal, setCalorieGoal] = useState(0)
   const [showCamera, setShowCamera] = useState(false)
@@ -58,6 +59,8 @@ export default function NutritionPage() {
     setMeals(load<Meal[]>('levi_meals_today', []))
     setWater(load<number>('levi_water_today', 0))
     setCalorieGoal(load<number>('levi_calorie_goal', 0))
+    const savedFast = load<string | null>('levi_fast_start', null)
+    if (savedFast) setFastStart(new Date(savedFast))
   }, [])
 
   useEffect(() => {
@@ -229,11 +232,11 @@ export default function NutritionPage() {
             <div className="text-center py-2">
               <p className="text-3xl font-mono font-bold text-emerald-400">{fastElapsed}</p>
               <p className="text-xs text-muted-foreground mt-1">Fasten läuft · Ziel: 16:00:00</p>
-              <Button onClick={() => setFastStart(null)} variant="outline" size="sm"
+              <Button onClick={() => { setFastStart(null); localStorage.removeItem('levi_fast_start') }} variant="outline" size="sm"
                 className="mt-3 border-red-500/30 text-red-400 hover:bg-red-500/10">Fasten beenden</Button>
             </div>
           ) : (
-            <Button onClick={() => setFastStart(new Date())}
+            <Button onClick={() => { const now = new Date(); setFastStart(now); localStorage.setItem('levi_fast_start', JSON.stringify(now.toISOString())) }}
               className="w-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30">
               Fasten starten
             </Button>
@@ -272,19 +275,23 @@ export default function NutritionPage() {
         </div>
       )}
 
+      {/* Camera Buttons – prominent */}
+      <div className="grid grid-cols-2 gap-3">
+        <Button onClick={() => startCamera('photo')}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2">
+          <Camera className="w-4 h-4" />Essen fotografieren
+        </Button>
+        <Button onClick={() => startCamera('qr')} variant="outline"
+          className="border-border text-muted-foreground flex items-center gap-2">
+          <QrCode className="w-4 h-4" />QR-Code scannen
+        </Button>
+      </div>
+
       {/* Meals */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm">Mahlzeiten heute</CardTitle>
-            <div className="flex gap-3">
-              <button onClick={() => startCamera('qr')} className="text-muted-foreground hover:text-foreground">
-                <QrCode className="w-4 h-4" />
-              </button>
-              <button onClick={() => startCamera('photo')} className="text-muted-foreground hover:text-foreground">
-                <Camera className="w-4 h-4" />
-              </button>
-            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-2">

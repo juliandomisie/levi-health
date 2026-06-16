@@ -8,10 +8,14 @@ type Message = { role: 'user' | 'assistant'; content: string }
 
 const QUICK = ['Wie war mein Schlaf?', 'Heutiger Fokus?', 'Supplement-Tipp?']
 
-function getBestVoice(): SpeechSynthesisVoice | null {
+function getBestMaleGermanVoice(): SpeechSynthesisVoice | null {
   const voices = speechSynthesis.getVoices()
   const prefs = [
-    (v: SpeechSynthesisVoice) => v.lang.startsWith('de') && /premium|enhanced|natural|neural/i.test(v.name),
+    // iOS/macOS male German voices
+    (v: SpeechSynthesisVoice) => v.lang.startsWith('de') && /markus|stefan|yannick|jan|daniel/i.test(v.name),
+    // Neural/enhanced German voices
+    (v: SpeechSynthesisVoice) => v.lang.startsWith('de') && /neural|premium|enhanced|natural/i.test(v.name),
+    // Non-local German (usually cloud/better quality)
     (v: SpeechSynthesisVoice) => v.lang === 'de-DE' && !v.localService,
     (v: SpeechSynthesisVoice) => v.lang === 'de-DE',
     (v: SpeechSynthesisVoice) => v.lang.startsWith('de'),
@@ -23,23 +27,34 @@ function getBestVoice(): SpeechSynthesisVoice | null {
   return voices[0] ?? null
 }
 
-function speak(text: string) {
+function speakNatural(text: string) {
   if (!('speechSynthesis' in window)) return
   speechSynthesis.cancel()
-  const utter = new SpeechSynthesisUtterance(text)
-  utter.lang = 'de-DE'
-  utter.rate = 0.95
-  utter.pitch = 1.0
-  utter.volume = 1.0
-  const trySpeak = () => {
-    const voice = getBestVoice()
-    if (voice) utter.voice = voice
-    speechSynthesis.speak(utter)
+
+  // Split into sentences for more natural pacing
+  const sentences = text.match(/[^.!?]+[.!?]+/g) ?? [text]
+
+  const doSpeak = () => {
+    let delay = 0
+    sentences.forEach((sentence, i) => {
+      setTimeout(() => {
+        const utter = new SpeechSynthesisUtterance(sentence.trim())
+        utter.lang = 'de-DE'
+        utter.rate = 0.88
+        utter.pitch = 0.92
+        utter.volume = 1.0
+        const voice = getBestMaleGermanVoice()
+        if (voice) utter.voice = voice
+        speechSynthesis.speak(utter)
+      }, delay)
+      delay += sentence.length * 45
+    })
   }
+
   if (speechSynthesis.getVoices().length === 0) {
-    speechSynthesis.addEventListener('voiceschanged', trySpeak, { once: true })
+    speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true })
   } else {
-    trySpeak()
+    doSpeak()
   }
 }
 
@@ -87,7 +102,7 @@ export function LeviWidget() {
       const reply = data.content as string
       setMessages(p => [...p, { role: 'assistant', content: reply }])
       if (!open) setUnread(n => n + 1)
-      if (voiceEnabled) speak(reply)
+      if (voiceEnabled) speakNatural(reply)
     } catch {
       setMessages(p => [...p, { role: 'assistant', content: 'Kurzer Aussetzer – versuch es nochmal!' }])
     } finally { setLoading(false) }

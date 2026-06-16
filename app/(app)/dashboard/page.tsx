@@ -38,13 +38,24 @@ export default function DashboardPage() {
   const [healthData, setHealthData] = useState<Record<string, number | null>>({})
   const [hour, setHour] = useState(0)
 
-  useEffect(() => {
+  const readData = () => {
     setName(load('levi_name', 'Julian') || 'Julian')
     setWater(load('levi_water_today', 0))
     setMeals(load('levi_meals_today', []))
     setHealthData(load('levi_health_today', {}))
     setHour(new Date().getHours())
-  }, [])
+  }
+
+  useEffect(() => {
+    readData()
+    window.addEventListener('focus', readData)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) readData()
+    })
+    return () => {
+      window.removeEventListener('focus', readData)
+    }
+  }, []) // eslint-disable-line
 
   const greeting = hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'
   const totalCalories = meals.reduce((s, m) => s + m.calories, 0)

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
+// Supabase client available via: import { createClient } from '@/utils/supabase/server'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 

@@ -46,7 +46,11 @@ function MacroBar({ label, value, pct, target, targetG, color }: { label: string
         <div className={`h-2 rounded-full transition-all ${color.replace('text-', 'bg-')}`}
           style={{ width: `${progress}%` }} />
       </div>
-      <p className="text-[9px] text-muted-foreground text-right">Ziel: {target}% · {pct}% gegessen</p>
+      {targetG > 0 && (
+        <p className="text-[9px] text-muted-foreground text-right">
+          noch {Math.max(0, targetG - value)}g übrig
+        </p>
+      )}
     </div>
   )
 }

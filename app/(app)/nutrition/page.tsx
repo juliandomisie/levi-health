@@ -33,21 +33,20 @@ function load<T>(key: string, fallback: T): T {
 }
 
 function MacroBar({ label, value, pct, target, targetG, color }: { label: string; value: number; pct: number; target: number; targetG: number; color: string }) {
-  const progress = target > 0 ? Math.min((pct / target) * 100, 100) : 0
+  const progress = targetG > 0 ? Math.min((value / targetG) * 100, 100) : Math.min((pct / target) * 100, 100)
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
-        <span className="text-muted-foreground">{label}</span>
-        <span className={color + ' font-medium'}>{value}g</span>
+        <span className="text-muted-foreground font-medium">{label}</span>
+        <span className={color + ' font-bold'}>
+          {targetG > 0 ? `${value}g / ${targetG}g` : `${value}g`}
+        </span>
       </div>
       <div className="w-full bg-secondary rounded-full h-2">
         <div className={`h-2 rounded-full transition-all ${color.replace('text-', 'bg-')}`}
           style={{ width: `${progress}%` }} />
       </div>
-      <div className="flex justify-between text-[9px] text-muted-foreground">
-        <span>{pct}% von {target}% Ziel</span>
-        {targetG > 0 && <span className={color}>{targetG}g Ziel</span>}
-      </div>
+      <p className="text-[9px] text-muted-foreground text-right">Ziel: {target}% · {pct}% gegessen</p>
     </div>
   )
 }
@@ -62,6 +61,8 @@ export default function NutritionPage() {
   const [fitnessGoal, setFitnessGoal] = useState('halten')
   const [macroTargets, setMacroTargets] = useState({ protein: 30, carbs: 40, fat: 30 })
   const [showMacroEdit, setShowMacroEdit] = useState(false)
+  const [gramsInput, setGramsInput] = useState('')
+  const [per100g, setPer100g] = useState<{ cal: number; prot: number; carbs: number; fat: number } | null>(null)
   const [showCamera, setShowCamera] = useState(false)
   const [cameraMode, setCameraMode] = useState<'photo' | 'barcode'>('photo')
   const [analyzing, setAnalyzing] = useState(false)
@@ -129,8 +130,24 @@ export default function NutritionPage() {
     }, 900)
   }
 
+  const handleGramsChange = (g: string) => {
+    setGramsInput(g)
+    if (per100g && +g > 0) {
+      const f = +g / 100
+      setNewMeal(p => ({
+        ...p,
+        calories: String(Math.round(per100g.cal  * f)),
+        protein:  String(Math.round(per100g.prot  * f)),
+        carbs:    String(Math.round(per100g.carbs * f)),
+        fat:      String(Math.round(per100g.fat   * f)),
+      }))
+    }
+  }
+
   const applySuggestion = () => {
     if (!aiSuggestion) return
+    setPer100g({ cal: aiSuggestion.calories, prot: aiSuggestion.protein, carbs: aiSuggestion.carbs, fat: aiSuggestion.fat })
+    setGramsInput('100')
     setNewMeal(p => ({
       ...p,
       name: aiSuggestion.name || p.name,
@@ -168,6 +185,8 @@ export default function NutritionPage() {
     setNewMeal({ name: '', protein: '', carbs: '', fat: '', calories: '', type: 'snack' })
     setAnalysisResult('')
     setAiSuggestion(null)
+    setGramsInput('')
+    setPer100g(null)
   }
 
   const stopCamera = useCallback(() => {
@@ -207,17 +226,25 @@ export default function NutritionPage() {
               const data = await res.json()
               const p = data?.product
               if (p) {
-                const per100 = p.nutriments
+                const n = p.nutriments
                 const name = p.product_name_de || p.product_name || `EAN ${barcode}`
+                const base = {
+                  cal:   Math.round(n['energy-kcal_100g'] ?? 0),
+                  prot:  Math.round(n['proteins_100g'] ?? 0),
+                  carbs: Math.round(n['carbohydrates_100g'] ?? 0),
+                  fat:   Math.round(n['fat_100g'] ?? 0),
+                }
+                setPer100g(base)
+                setGramsInput('100')
                 setNewMeal({
                   name,
-                  calories: String(Math.round(per100['energy-kcal_100g'] ?? 0)),
-                  protein: String(Math.round(per100['proteins_100g'] ?? 0)),
-                  carbs: String(Math.round(per100['carbohydrates_100g'] ?? 0)),
-                  fat: String(Math.round(per100['fat_100g'] ?? 0)),
+                  calories: String(base.cal),
+                  protein:  String(base.prot),
+                  carbs:    String(base.carbs),
+                  fat:      String(base.fat),
                   type: 'snack',
                 })
-                setAnalysisResult(`✓ "${name}" gefunden (Werte per 100g) — Menge anpassen`)
+                setAnalysisResult(`✓ "${name}" — Gramm anpassen für genaue Werte`)
               } else {
                 setAnalysisResult(`Barcode ${barcode} nicht in Datenbank — bitte manuell eingeben`)
               }
@@ -247,9 +274,12 @@ export default function NutritionPage() {
       })
       const data = await res.json()
       if (data.name) {
-        setNewMeal({ name: data.name, protein: String(data.protein ?? ''), carbs: String(data.carbs ?? ''),
-          fat: String(data.fat ?? ''), calories: String(data.calories ?? ''), type: 'snack' })
-        setAnalysisResult(`✓ "${data.name}" erkannt — bitte Werte prüfen & anpassen`)
+        const base = { cal: data.calories ?? 0, prot: data.protein ?? 0, carbs: data.carbs ?? 0, fat: data.fat ?? 0 }
+        setPer100g(base)
+        setGramsInput('100')
+        setNewMeal({ name: data.name, protein: String(base.prot), carbs: String(base.carbs),
+          fat: String(base.fat), calories: String(base.cal), type: 'snack' })
+        setAnalysisResult(`✓ "${data.name}" erkannt — Gramm anpassen & Werte prüfen`)
       } else { setAnalysisResult('Kein Essen erkannt — bitte manuell eingeben') }
     } catch { setAnalysisResult('Analyse fehlgeschlagen') }
     setAnalyzing(false)
@@ -526,10 +556,23 @@ export default function NutritionPage() {
             {/* Food name + AI suggestion */}
             <div className="relative">
               <Input value={newMeal.name} onChange={e => handleFoodNameChange(e.target.value)}
-                placeholder="Mahlzeit + Menge (z.B. 1 Banane, 200g Hähnchen)..."
+                placeholder="Mahlzeit (z.B. Banane, Hähnchenbrust)..."
                 className="bg-background border-border text-sm pr-8" />
               {suggesting && (
                 <Loader2 className="absolute right-2 top-2.5 w-4 h-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
+
+            {/* Gram input — always visible, scales macros when per100g is set */}
+            <div className="flex items-center gap-2">
+              <Input type="number" value={gramsInput} onChange={e => handleGramsChange(e.target.value)}
+                placeholder="Menge in Gramm..."
+                className="bg-background border-border text-sm" />
+              <span className="text-xs text-muted-foreground shrink-0">g</span>
+              {per100g && gramsInput ? (
+                <span className="text-[10px] text-emerald-400 shrink-0">↻ skaliert</span>
+              ) : (
+                <span className="text-[10px] text-muted-foreground shrink-0">optional</span>
               )}
             </div>
 

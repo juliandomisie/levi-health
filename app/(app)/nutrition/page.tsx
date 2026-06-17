@@ -215,12 +215,33 @@ export default function NutritionPage() {
     fat: acc.fat + m.fat, calories: acc.calories + m.calories,
   }), { protein: 0, carbs: 0, fat: 0, calories: 0 })
 
-  const addMeal = () => {
+  const addMeal = async () => {
     if (!newMeal.name) return
+    // Auto-fetch nutrition via AI if macros are missing
+    let protein = +newMeal.protein || 0
+    let carbs   = +newMeal.carbs   || 0
+    let fat     = +newMeal.fat     || 0
+    let calories = +newMeal.calories || 0
+    if (!protein && !fat && !carbs) {
+      setAnalyzing(true)
+      try {
+        const res = await fetch('/api/suggest-nutrition', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ food: newMeal.name }),
+        })
+        const data = await res.json()
+        if (data.calories) {
+          protein  = data.protein  || 0
+          carbs    = data.carbs    || 0
+          fat      = data.fat      || 0
+          calories = data.calories || 0
+        }
+      } catch { /* silent */ }
+      setAnalyzing(false)
+    }
     const meal = {
       id: Date.now(), type: newMeal.type, name: newMeal.name,
-      protein: +newMeal.protein || 0, carbs: +newMeal.carbs || 0,
-      fat: +newMeal.fat || 0, calories: +newMeal.calories || 0,
+      protein, carbs, fat, calories,
     }
     saveMeals([...meals, meal])
     // Save to food history (deduplicated by name, max 50)

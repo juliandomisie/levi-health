@@ -93,12 +93,16 @@ export default function NutritionPage() {
     setFitnessGoal(load<string>('levi_fitness_goal', 'halten'))
     const goal = load<string>('levi_fitness_goal', 'halten')
     const defaults = MACRO_TARGETS[goal] ?? MACRO_TARGETS.halten
-    const saved = load<Partial<typeof defaults>>('levi_macro_targets', defaults)
-    setMacroTargets({
-      protein: saved.protein ?? defaults.protein,
-      carbs:   saved.carbs   ?? defaults.carbs,
-      fat:     saved.fat     ?? defaults.fat,
-    })
+    const raw = localStorage.getItem('levi_macro_targets')
+    let saved: Record<string, number> = {}
+    try { saved = raw ? JSON.parse(raw) : {} } catch { saved = {} }
+    const merged = {
+      protein: (saved.protein > 0 ? saved.protein : null) ?? defaults.protein,
+      carbs:   (saved.carbs   > 0 ? saved.carbs   : null) ?? defaults.carbs,
+      fat:     (saved.fat     > 0 ? saved.fat     : null) ?? defaults.fat,
+    }
+    setMacroTargets(merged)
+    localStorage.setItem('levi_macro_targets', JSON.stringify(merged))
     const savedFast = load<string | null>('levi_fast_start', null)
     if (savedFast) setFastStart(new Date(savedFast))
   }, [])

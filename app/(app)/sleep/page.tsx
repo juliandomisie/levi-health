@@ -23,6 +23,7 @@ export default function SleepPage() {
   const [saved, setSaved]         = useState(false)
   const [entries, setEntries]     = useState<Entry[]>([])
   const [analyzing, setAnalyzing] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     setEntries(load<Entry[]>('levi_sleep_entries', []))
@@ -40,7 +41,8 @@ export default function SleepPage() {
   const hours = calcHours(bedtime, waketime)
 
   const handleSave = async () => {
-    if (!bedtime || !waketime) return
+    if (!bedtime || !waketime) { setError('Bitte Einschlafen und Aufwachen ausfüllen'); return }
+    setError('')
     const h = calcHours(bedtime, waketime)
     const entry: Entry = {
       date: new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
@@ -130,6 +132,7 @@ export default function SleepPage() {
               className="[&_[role=slider]]:bg-blue-400" />
           </div>
 
+          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
           <Button onClick={handleSave} disabled={analyzing} className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
             {analyzing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Levi analysiert...</> :
               saved ? '✓ Gespeichert!' : <><Save className="w-4 h-4 mr-2" />Eintragen & analysieren</>}

@@ -668,7 +668,7 @@ export default function NutritionPage() {
 
             {/* Gram input — always visible, scales macros when per100g is set */}
             <div className="flex items-center gap-2">
-              <Input type="number" value={gramsInput} onChange={e => handleGramsChange(e.target.value)}
+              <Input type="text" inputMode="decimal" value={gramsInput} onChange={e => handleGramsChange(e.target.value)}
                 placeholder="Menge in Gramm..."
                 className="bg-background border-border text-sm" />
               <span className="text-xs text-muted-foreground shrink-0">g</span>

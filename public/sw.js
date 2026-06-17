@@ -1,4 +1,4 @@
-const CACHE_NAME = 'levi-health-v2';
+const CACHE_NAME = 'levi-health-v3';
 const STATIC_ASSETS = ['/', '/dashboard', '/sleep', '/nutrition', '/fitness', '/biomarkers', '/coach', '/koerper', '/settings'];
 
 self.addEventListener('install', (event) => {

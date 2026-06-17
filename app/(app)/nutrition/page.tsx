@@ -1,11 +1,10 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
-import { Utensils, Droplets, Timer, Plus, Flame, Camera, X, Trash2, QrCode, Loader2, Target } from 'lucide-react'
-import jsQR from 'jsqr'
+import { Utensils, Droplets, Timer, Plus, Flame, Camera, X, Trash2, Barcode, Loader2, Target, Sparkles } from 'lucide-react'
 
 type Meal = { id: number; type: string; name: string; protein: number; carbs: number; fat: number; calories: number }
 
@@ -54,19 +53,21 @@ export default function NutritionPage() {
   const [water, setWater] = useState(0)
   const [fastStart, setFastStart] = useState<Date | null>(null)
   const [fastElapsed, setFastElapsed] = useState('00:00:00')
-  const [showAdd, setShowAdd] = useState(false)
   const [newMeal, setNewMeal] = useState({ name: '', protein: '', carbs: '', fat: '', calories: '', type: 'snack' })
   const [calorieGoal, setCalorieGoal] = useState(0)
   const [fitnessGoal, setFitnessGoal] = useState('halten')
   const [showCamera, setShowCamera] = useState(false)
-  const [cameraMode, setCameraMode] = useState<'photo' | 'qr'>('photo')
+  const [cameraMode, setCameraMode] = useState<'photo' | 'barcode'>('photo')
   const [analyzing, setAnalyzing] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
   const [analysisResult, setAnalysisResult] = useState('')
+  const [aiSuggestion, setAiSuggestion] = useState<{ name: string; calories: number; protein: number; carbs: number; fat: number } | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
-  const qrRef = useRef<NodeJS.Timeout | null>(null)
+  const barcodeReaderRef = useRef<import('@zxing/browser').BrowserMultiFormatReader | null>(null)
+  const suggestTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const todayKey = new Date().toDateString()
@@ -99,6 +100,39 @@ export default function NutritionPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [fastStart])
 
+  // AI suggestion when user types food name
+  const handleFoodNameChange = (name: string) => {
+    setNewMeal(p => ({ ...p, name }))
+    setAiSuggestion(null)
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
+    if (name.length < 3) return
+    suggestTimerRef.current = setTimeout(async () => {
+      setSuggesting(true)
+      try {
+        const res = await fetch('/api/suggest-nutrition', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ food: name }),
+        })
+        const data = await res.json()
+        if (data.calories) setAiSuggestion(data)
+      } catch { /* silent */ }
+      setSuggesting(false)
+    }, 900)
+  }
+
+  const applySuggestion = () => {
+    if (!aiSuggestion) return
+    setNewMeal(p => ({
+      ...p,
+      name: aiSuggestion.name || p.name,
+      calories: String(aiSuggestion.calories),
+      protein: String(aiSuggestion.protein),
+      carbs: String(aiSuggestion.carbs),
+      fat: String(aiSuggestion.fat),
+    }))
+    setAiSuggestion(null)
+  }
+
   const saveMeals = (updated: Meal[]) => {
     setMeals(updated)
     localStorage.setItem('levi_meals_today', JSON.stringify(updated))
@@ -124,36 +158,66 @@ export default function NutritionPage() {
     }])
     setNewMeal({ name: '', protein: '', carbs: '', fat: '', calories: '', type: 'snack' })
     setAnalysisResult('')
+    setAiSuggestion(null)
   }
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop())
-    if (qrRef.current) clearInterval(qrRef.current)
+    barcodeReaderRef.current = null
     setShowCamera(false)
   }, [])
 
-  const startCamera = async (mode: 'photo' | 'qr') => {
+  const startCamera = async (mode: 'photo' | 'barcode') => {
     setCameraMode(mode)
     setAnalysisResult('')
     setShowCamera(true)
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' }
       })
       streamRef.current = stream
-      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play() }
-      if (mode === 'qr') {
-        qrRef.current = setInterval(() => {
-          if (!videoRef.current || !canvasRef.current) return
-          const ctx = canvasRef.current.getContext('2d')
-          if (!ctx || videoRef.current.videoWidth === 0) return
-          canvasRef.current.width = videoRef.current.videoWidth
-          canvasRef.current.height = videoRef.current.videoHeight
-          ctx.drawImage(videoRef.current, 0, 0)
-          const img = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height)
-          const code = jsQR(img.data, img.width, img.height)
-          if (code) { clearInterval(qrRef.current!); setAnalysisResult(`QR erkannt: ${code.data}`); stopCamera() }
-        }, 300)
+
+      if (mode === 'photo') {
+        if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play() }
+      } else {
+        // Barcode mode: use ZXing
+        if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play() }
+        const { BrowserMultiFormatReader } = await import('@zxing/browser')
+        const reader = new BrowserMultiFormatReader()
+        barcodeReaderRef.current = reader
+
+        reader.decodeFromStream(stream, videoRef.current!, async (result) => {
+          if (result) {
+            const barcode = result.getText()
+            barcodeReaderRef.current = null
+            stopCamera()
+            setAnalyzing(true)
+            try {
+              const res = await fetch(`https://world.openfoodfacts.org/api/v3/product/${barcode}.json`)
+              const data = await res.json()
+              const p = data?.product
+              if (p) {
+                const per100 = p.nutriments
+                const name = p.product_name_de || p.product_name || `EAN ${barcode}`
+                setNewMeal({
+                  name,
+                  calories: String(Math.round(per100['energy-kcal_100g'] ?? 0)),
+                  protein: String(Math.round(per100['proteins_100g'] ?? 0)),
+                  carbs: String(Math.round(per100['carbohydrates_100g'] ?? 0)),
+                  fat: String(Math.round(per100['fat_100g'] ?? 0)),
+                  type: 'snack',
+                })
+                setAnalysisResult(`✓ "${name}" gefunden (Werte per 100g) — Menge anpassen`)
+              } else {
+                setAnalysisResult(`Barcode ${barcode} nicht in Datenbank — bitte manuell eingeben`)
+              }
+            } catch {
+              setAnalysisResult('Barcode-Lookup fehlgeschlagen')
+            }
+            setAnalyzing(false)
+          }
+        })
       }
     } catch { setAnalysisResult('Kamerazugriff nicht möglich'); setShowCamera(false) }
   }
@@ -189,7 +253,7 @@ export default function NutritionPage() {
         <h1 className="text-xl font-bold">Ernährung</h1>
       </div>
 
-      {/* Calories */}
+      {/* Calories + Macros */}
       <Card className="bg-card border-border">
         <CardContent className="p-4 space-y-3">
           <div className="flex justify-between items-center">
@@ -211,7 +275,6 @@ export default function NutritionPage() {
           {calorieGoal > 0 && (
             <Progress value={Math.min((totals.calories / calorieGoal) * 100, 100)} className="[&>div]:bg-orange-400" />
           )}
-          {/* Macro breakdown with percentages */}
           {(() => {
             const totalKcal = totals.protein * 4 + totals.carbs * 4 + totals.fat * 9
             const pPct = totalKcal > 0 ? Math.round(totals.protein * 4 / totalKcal * 100) : 0
@@ -288,15 +351,20 @@ export default function NutritionPage() {
         <div className="fixed inset-0 z-50 bg-black flex flex-col">
           <div className="flex items-center justify-between p-4 pt-safe">
             <span className="text-white font-medium">
-              {cameraMode === 'photo' ? '📸 Essen fotografieren' : '🔍 QR-Code scannen'}
+              {cameraMode === 'photo' ? '📸 Essen fotografieren' : '🔍 Barcode scannen'}
             </span>
             <button onClick={stopCamera}><X className="w-6 h-6 text-white" /></button>
           </div>
           <div className="flex-1 relative">
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            {cameraMode === 'qr' && (
+            {cameraMode === 'barcode' && (
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-56 h-56 border-2 border-emerald-400 rounded-2xl" />
+                <div className="w-72 h-32 border-2 border-emerald-400 rounded-xl">
+                  <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-400 rounded-tl" />
+                  <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-400 rounded-tr" />
+                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-400 rounded-bl" />
+                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-400 rounded-br" />
+                </div>
               </div>
             )}
           </div>
@@ -308,42 +376,41 @@ export default function NutritionPage() {
                 {analyzing ? <Loader2 className="w-6 h-6 animate-spin text-emerald-600" /> : <Camera className="w-6 h-6 text-emerald-600" />}
               </button>
             ) : (
-              <p className="text-white/70 text-sm">QR-Code in den Rahmen halten</p>
+              <p className="text-white/70 text-sm text-center">Barcode in den Rahmen halten — wird automatisch erkannt</p>
             )}
           </div>
         </div>
       )}
 
-      {/* Camera Buttons – prominent */}
+      {/* Camera Buttons */}
       <div className="grid grid-cols-2 gap-3">
         <Button onClick={() => startCamera('photo')}
           className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2">
           <Camera className="w-4 h-4" />Essen fotografieren
         </Button>
-        <Button onClick={() => startCamera('qr')} variant="outline"
+        <Button onClick={() => startCamera('barcode')} variant="outline"
           className="border-border text-muted-foreground flex items-center gap-2">
-          <QrCode className="w-4 h-4" />QR-Code scannen
+          <Barcode className="w-4 h-4" />Barcode scannen
         </Button>
       </div>
 
       {/* Meals */}
       <Card className="bg-card border-border">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">Mahlzeiten heute</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="p-4 space-y-3">
+          <p className="text-sm font-semibold">Mahlzeiten heute</p>
+
           {analysisResult && (
             <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-xs text-emerald-400">
               {analysisResult}
             </div>
           )}
+
           {meals.length === 0 && !analysisResult && (
             <p className="text-xs text-muted-foreground text-center py-4">
-              Noch keine Mahlzeiten — 📸 Foto oder manuell eintragen
+              Noch keine Mahlzeiten — 📸 Foto, Barcode oder manuell eintragen
             </p>
           )}
+
           {meals.map(meal => {
             const mt = MEAL_TYPES.find(t => t.key === meal.type)
             return (
@@ -379,8 +446,54 @@ export default function NutritionPage() {
                 </button>
               ))}
             </div>
-            <Input value={newMeal.name} onChange={e => setNewMeal(p => ({ ...p, name: e.target.value }))}
-              placeholder="Mahlzeit..." className="bg-background border-border text-sm" />
+
+            {/* Food name + AI suggestion */}
+            <div className="relative">
+              <Input value={newMeal.name} onChange={e => handleFoodNameChange(e.target.value)}
+                placeholder="Mahlzeit + Menge (z.B. 1 Banane, 200g Hähnchen)..."
+                className="bg-background border-border text-sm pr-8" />
+              {suggesting && (
+                <Loader2 className="absolute right-2 top-2.5 w-4 h-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
+
+            {/* AI suggestion banner */}
+            {aiSuggestion && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Levi schätzt: {aiSuggestion.name}
+                  </div>
+                  <button onClick={() => setAiSuggestion(null)} className="text-muted-foreground hover:text-foreground">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-1 text-center text-xs">
+                  <div className="bg-secondary rounded-lg p-1.5">
+                    <p className="text-orange-400 font-bold">{aiSuggestion.calories}</p>
+                    <p className="text-muted-foreground text-[9px]">kcal</p>
+                  </div>
+                  <div className="bg-secondary rounded-lg p-1.5">
+                    <p className="text-blue-400 font-bold">{aiSuggestion.protein}g</p>
+                    <p className="text-muted-foreground text-[9px]">Protein</p>
+                  </div>
+                  <div className="bg-secondary rounded-lg p-1.5">
+                    <p className="text-yellow-400 font-bold">{aiSuggestion.carbs}g</p>
+                    <p className="text-muted-foreground text-[9px]">Karbs</p>
+                  </div>
+                  <div className="bg-secondary rounded-lg p-1.5">
+                    <p className="text-purple-400 font-bold">{aiSuggestion.fat}g</p>
+                    <p className="text-muted-foreground text-[9px]">Fett</p>
+                  </div>
+                </div>
+                <Button onClick={applySuggestion} size="sm"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-7">
+                  Übernehmen
+                </Button>
+              </div>
+            )}
+
             <div className="grid grid-cols-4 gap-1.5">
               {(['protein', 'carbs', 'fat', 'calories'] as const).map(k => (
                 <Input key={k} type="number" value={newMeal[k]}

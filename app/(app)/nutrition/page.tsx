@@ -291,9 +291,12 @@ export default function NutritionPage() {
         const { BrowserMultiFormatReader } = await import('@zxing/browser')
         const reader = new BrowserMultiFormatReader()
         barcodeReaderRef.current = reader
+        let detected = false
 
         reader.decodeFromStream(stream, videoRef.current!, async (result) => {
-          if (result) {
+          if (!result || detected) return
+          detected = true
+          {
             const barcode = result.getText()
             barcodeReaderRef.current = null
             stopCamera()
@@ -333,6 +336,7 @@ export default function NutritionPage() {
         })
       }
     } catch { setAnalysisResult('Kamerazugriff nicht möglich'); setShowCamera(false) }
+
   }
 
   const takePhoto = async () => {

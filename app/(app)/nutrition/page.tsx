@@ -7,6 +7,7 @@ import { Progress } from '@/components/ui/progress'
 import { Utensils, Droplets, Timer, Plus, Flame, Camera, X, Trash2, Barcode, Loader2, Target, Sparkles, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react'
 
 type Meal = { id: number; type: string; name: string; protein: number; carbs: number; fat: number; calories: number }
+type FoodHistoryItem = { name: string; calories: number; protein: number; carbs: number; fat: number; per100g?: { cal: number; prot: number; carbs: number; fat: number } }
 
 const FITNESS_GOALS: Record<string, { label: string; emoji: string; color: string }> = {
   aufbau:  { label: 'Muskelaufbau',    emoji: '💪', color: 'text-blue-400' },
@@ -71,6 +72,8 @@ export default function NutritionPage() {
   const [fitnessGoal, setFitnessGoal] = useState('halten')
   const [macroTargets, setMacroTargets] = useState({ protein: 30, carbs: 40, fat: 30 })
   const [showMacroEdit, setShowMacroEdit] = useState(false)
+  const [foodHistory, setFoodHistory] = useState<FoodHistoryItem[]>([])
+  const [showHistorySuggestions, setShowHistorySuggestions] = useState(false)
   const [gramsInput, setGramsInput] = useState('')
   const [per100g, setPer100g] = useState<{ cal: number; prot: number; carbs: number; fat: number } | null>(null)
   const [showCamera, setShowCamera] = useState(false)
@@ -110,6 +113,7 @@ export default function NutritionPage() {
     }
     setMacroTargets(merged)
     localStorage.setItem('levi_macro_targets', JSON.stringify(merged))
+    setFoodHistory(load<FoodHistoryItem[]>('levi_food_history', []))
     const savedFast = load<string | null>('levi_fast_start', null)
     if (savedFast) setFastStart(new Date(savedFast))
   }, [])
@@ -163,6 +167,23 @@ export default function NutritionPage() {
     }
   }
 
+  const applyHistory = (item: FoodHistoryItem) => {
+    if (item.per100g) {
+      setPer100g(item.per100g)
+      setGramsInput('100')
+    }
+    setNewMeal(p => ({
+      ...p,
+      name: item.name,
+      calories: String(item.calories),
+      protein: String(item.protein),
+      carbs: String(item.carbs),
+      fat: String(item.fat),
+    }))
+    setShowHistorySuggestions(false)
+    setAiSuggestion(null)
+  }
+
   const applySuggestion = () => {
     if (!aiSuggestion) return
     setPer100g({ cal: aiSuggestion.calories, prot: aiSuggestion.protein, carbs: aiSuggestion.carbs, fat: aiSuggestion.fat })
@@ -196,14 +217,25 @@ export default function NutritionPage() {
 
   const addMeal = () => {
     if (!newMeal.name) return
-    saveMeals([...meals, {
+    const meal = {
       id: Date.now(), type: newMeal.type, name: newMeal.name,
       protein: +newMeal.protein || 0, carbs: +newMeal.carbs || 0,
       fat: +newMeal.fat || 0, calories: +newMeal.calories || 0,
-    }])
+    }
+    saveMeals([...meals, meal])
+    // Save to food history (deduplicated by name, max 50)
+    const histItem: FoodHistoryItem = {
+      name: meal.name, calories: meal.calories,
+      protein: meal.protein, carbs: meal.carbs, fat: meal.fat,
+      ...(per100g ? { per100g } : {}),
+    }
+    const updatedHistory = [histItem, ...foodHistory.filter(h => h.name.toLowerCase() !== meal.name.toLowerCase())].slice(0, 50)
+    setFoodHistory(updatedHistory)
+    localStorage.setItem('levi_food_history', JSON.stringify(updatedHistory))
     setNewMeal({ name: '', protein: '', carbs: '', fat: '', calories: '', type: 'snack' })
     setAnalysisResult('')
     setAiSuggestion(null)
+    setShowHistorySuggestions(false)
     setGramsInput('')
     setPer100g(null)
   }
@@ -571,11 +603,31 @@ export default function NutritionPage() {
             {/* Food name + AI suggestion */}
             <div className="relative">
               <Input value={newMeal.name} onChange={e => handleFoodNameChange(e.target.value)}
+                onFocus={() => setShowHistorySuggestions(true)}
+                onBlur={() => setTimeout(() => setShowHistorySuggestions(false), 150)}
                 placeholder="Mahlzeit (z.B. Banane, Hähnchenbrust)..."
                 className="bg-background border-border text-sm pr-8" />
               {suggesting && (
                 <Loader2 className="absolute right-2 top-2.5 w-4 h-4 animate-spin text-muted-foreground" />
               )}
+              {/* History dropdown */}
+              {showHistorySuggestions && foodHistory.length > 0 && (() => {
+                const filtered = newMeal.name.length >= 1
+                  ? foodHistory.filter(h => h.name.toLowerCase().includes(newMeal.name.toLowerCase()))
+                  : foodHistory.slice(0, 6)
+                if (filtered.length === 0) return null
+                return (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
+                    {filtered.slice(0, 6).map((item, i) => (
+                      <button key={i} onMouseDown={() => applyHistory(item)}
+                        className="w-full flex items-center justify-between px-3 py-2 hover:bg-secondary transition-colors text-left border-b border-border/50 last:border-0">
+                        <span className="text-sm truncate">{item.name}</span>
+                        <span className="text-xs text-muted-foreground shrink-0 ml-2">{item.calories} kcal</span>
+                      </button>
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Gram input — always visible, scales macros when per100g is set */}

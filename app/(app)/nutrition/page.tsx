@@ -155,23 +155,28 @@ export default function NutritionPage() {
 
   const handleGramsChange = (g: string) => {
     setGramsInput(g)
-    if (per100g && +g > 0) {
+    // Use per100g if set, otherwise auto-apply AI suggestion as base
+    const base = per100g ?? (aiSuggestion
+      ? { cal: aiSuggestion.calories, prot: aiSuggestion.protein, carbs: aiSuggestion.carbs, fat: aiSuggestion.fat }
+      : null)
+    if (base && +g > 0) {
+      if (!per100g && aiSuggestion) setPer100g(base)
       const f = +g / 100
       setNewMeal(p => ({
         ...p,
-        calories: String(Math.round(per100g.cal  * f)),
-        protein:  String(Math.round(per100g.prot  * f)),
-        carbs:    String(Math.round(per100g.carbs * f)),
-        fat:      String(Math.round(per100g.fat   * f)),
+        calories: String(Math.round(base.cal   * f)),
+        protein:  String(Math.round(base.prot  * f)),
+        carbs:    String(Math.round(base.carbs * f)),
+        fat:      String(Math.round(base.fat   * f)),
       }))
     }
   }
 
   const applyHistory = (item: FoodHistoryItem) => {
-    if (item.per100g) {
-      setPer100g(item.per100g)
-      setGramsInput('100')
-    }
+    // Always reconstruct per100g so gram scaling works
+    const base = item.per100g ?? { cal: item.calories, prot: item.protein, carbs: item.carbs, fat: item.fat }
+    setPer100g(base)
+    setGramsInput('100')
     setNewMeal(p => ({
       ...p,
       name: item.name,
@@ -621,6 +626,18 @@ export default function NutritionPage() {
               ))}
             </div>
 
+            {/* Quick-access: last 3 foods always visible */}
+            {foodHistory.length > 0 && (
+              <div className="flex gap-1.5 flex-wrap">
+                {foodHistory.slice(0, 3).map((item, i) => (
+                  <button key={i} onMouseDown={() => applyHistory(item)}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-secondary rounded-full text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors truncate max-w-[120px]">
+                    <span className="truncate">{item.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Food name + AI suggestion */}
             <div className="relative">
               <Input value={newMeal.name} onChange={e => handleFoodNameChange(e.target.value)}
@@ -631,15 +648,13 @@ export default function NutritionPage() {
               {suggesting && (
                 <Loader2 className="absolute right-2 top-2.5 w-4 h-4 animate-spin text-muted-foreground" />
               )}
-              {/* History dropdown */}
-              {showHistorySuggestions && foodHistory.length > 0 && (() => {
-                const filtered = newMeal.name.length >= 1
-                  ? foodHistory.filter(h => h.name.toLowerCase().includes(newMeal.name.toLowerCase()))
-                  : foodHistory.slice(0, 6)
+              {/* Filtered history dropdown when typing */}
+              {showHistorySuggestions && foodHistory.length > 0 && newMeal.name.length >= 1 && (() => {
+                const filtered = foodHistory.filter(h => h.name.toLowerCase().includes(newMeal.name.toLowerCase()))
                 if (filtered.length === 0) return null
                 return (
                   <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
-                    {filtered.slice(0, 6).map((item, i) => (
+                    {filtered.slice(0, 5).map((item, i) => (
                       <button key={i} onMouseDown={() => applyHistory(item)}
                         className="w-full flex items-center justify-between px-3 py-2 hover:bg-secondary transition-colors text-left border-b border-border/50 last:border-0">
                         <span className="text-sm truncate">{item.name}</span>

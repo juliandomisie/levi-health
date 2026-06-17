@@ -32,25 +32,24 @@ function load<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) ?? '') } catch { return fallback }
 }
 
-function MacroBar({ label, value, pct, target, targetG, color }: { label: string; value: number; pct: number; target: number; targetG: number; color: string }) {
-  const progress = targetG > 0 ? Math.min((value / targetG) * 100, 100) : Math.min((pct / target) * 100, 100)
+function MacroBar({ label, value, target, targetG, color }: { label: string; value: number; target: number; targetG: number; color: string }) {
+  const progress = targetG > 0 ? Math.min((value / targetG) * 100, 100) : 0
+  const remaining = targetG > 0 ? Math.max(0, targetG - value) : null
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
         <span className="text-muted-foreground font-medium">{label}</span>
         <span className={color + ' font-bold'}>
-          {targetG > 0 ? `${value}g / ${targetG}g` : `${value}g`}
+          {value}g{targetG > 0 ? ` / ${targetG}g` : ''}
         </span>
       </div>
-      <div className="w-full bg-secondary rounded-full h-2">
-        <div className={`h-2 rounded-full transition-all ${color.replace('text-', 'bg-')}`}
-          style={{ width: `${progress}%` }} />
+      <div className="w-full bg-secondary rounded-full h-2.5">
+        <div className={`h-2.5 rounded-full transition-all min-w-0 ${value > 0 ? color.replace('text-', 'bg-') : ''}`}
+          style={{ width: value > 0 ? `${Math.max(progress, 4)}%` : '0%' }} />
       </div>
-      {targetG > 0 && (
-        <p className="text-[9px] text-muted-foreground text-right">
-          noch {Math.max(0, targetG - value)}g übrig
-        </p>
-      )}
+      <p className="text-[9px] text-muted-foreground text-right">
+        {remaining !== null ? `noch ${remaining}g` : `Ziel: ${target}%`}
+      </p>
     </div>
   )
 }
@@ -93,8 +92,13 @@ export default function NutritionPage() {
     setCalorieGoal(load<number>('levi_calorie_goal', 0))
     setFitnessGoal(load<string>('levi_fitness_goal', 'halten'))
     const goal = load<string>('levi_fitness_goal', 'halten')
-    const defaultTargets = MACRO_TARGETS[goal] ?? MACRO_TARGETS.halten
-    setMacroTargets(load('levi_macro_targets', defaultTargets))
+    const defaults = MACRO_TARGETS[goal] ?? MACRO_TARGETS.halten
+    const saved = load<Partial<typeof defaults>>('levi_macro_targets', defaults)
+    setMacroTargets({
+      protein: saved.protein ?? defaults.protein,
+      carbs:   saved.carbs   ?? defaults.carbs,
+      fat:     saved.fat     ?? defaults.fat,
+    })
     const savedFast = load<string | null>('levi_fast_start', null)
     if (savedFast) setFastStart(new Date(savedFast))
   }, [])
@@ -328,18 +332,14 @@ export default function NutritionPage() {
 
           {/* Macro bars */}
           {(() => {
-            const totalKcal = totals.protein * 4 + totals.carbs * 4 + totals.fat * 9
-            const pPct = totalKcal > 0 ? Math.round(totals.protein * 4 / totalKcal * 100) : 0
-            const cPct = totalKcal > 0 ? Math.round(totals.carbs  * 4 / totalKcal * 100) : 0
-            const fPct = totalKcal > 0 ? Math.round(totals.fat    * 9 / totalKcal * 100) : 0
-            const tProteinG = calorieGoal > 0 ? Math.round(calorieGoal * macroTargets.protein / 100 / 4) : 0
-            const tCarbsG   = calorieGoal > 0 ? Math.round(calorieGoal * macroTargets.carbs   / 100 / 4) : 0
-            const tFatG     = calorieGoal > 0 ? Math.round(calorieGoal * macroTargets.fat     / 100 / 9) : 0
+            const tProteinG = calorieGoal > 0 ? Math.round(calorieGoal * (macroTargets.protein ?? 30) / 100 / 4) : 0
+            const tCarbsG   = calorieGoal > 0 ? Math.round(calorieGoal * (macroTargets.carbs   ?? 40) / 100 / 4) : 0
+            const tFatG     = calorieGoal > 0 ? Math.round(calorieGoal * (macroTargets.fat     ?? 30) / 100 / 9) : 0
             return (
               <div className="grid grid-cols-3 gap-3 pt-1">
-                <MacroBar label="Protein"     value={totals.protein} pct={pPct} target={macroTargets.protein} targetG={tProteinG} color="text-blue-400" />
-                <MacroBar label="Kohlenhydr." value={totals.carbs}   pct={cPct} target={macroTargets.carbs}   targetG={tCarbsG}   color="text-yellow-400" />
-                <MacroBar label="Fett"        value={totals.fat}     pct={fPct} target={macroTargets.fat}     targetG={tFatG}     color="text-purple-400" />
+                <MacroBar label="Protein"     value={totals.protein} target={macroTargets.protein ?? 30} targetG={tProteinG} color="text-blue-400" />
+                <MacroBar label="Kohlenhydr." value={totals.carbs}   target={macroTargets.carbs   ?? 40} targetG={tCarbsG}   color="text-yellow-400" />
+                <MacroBar label="Fett"        value={totals.fat}     target={macroTargets.fat     ?? 30} targetG={tFatG}     color="text-purple-400" />
               </div>
             )
           })()}

@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
-import { Utensils, Droplets, Timer, Plus, Flame, Camera, X, Trash2, Barcode, Loader2, Target, Sparkles } from 'lucide-react'
+import { Utensils, Droplets, Timer, Plus, Flame, Camera, X, Trash2, Barcode, Loader2, Target, Sparkles, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react'
 
 type Meal = { id: number; type: string; name: string; protein: number; carbs: number; fat: number; calories: number }
 
@@ -32,18 +32,22 @@ function load<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) ?? '') } catch { return fallback }
 }
 
-function MacroBar({ label, value, pct, target, color }: { label: string; value: number; pct: number; target: number; color: string }) {
+function MacroBar({ label, value, pct, target, targetG, color }: { label: string; value: number; pct: number; target: number; targetG: number; color: string }) {
+  const progress = target > 0 ? Math.min((pct / target) * 100, 100) : 0
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
         <span className="text-muted-foreground">{label}</span>
-        <span className={color + ' font-medium'}>{value}g <span className="text-muted-foreground">({pct}%)</span></span>
+        <span className={color + ' font-medium'}>{value}g</span>
       </div>
-      <div className="w-full bg-secondary rounded-full h-1.5">
-        <div className={`h-1.5 rounded-full transition-all ${color.replace('text-', 'bg-')}`}
-          style={{ width: `${Math.min((pct / target) * 100, 100)}%` }} />
+      <div className="w-full bg-secondary rounded-full h-2">
+        <div className={`h-2 rounded-full transition-all ${color.replace('text-', 'bg-')}`}
+          style={{ width: `${progress}%` }} />
       </div>
-      <p className="text-[9px] text-muted-foreground text-right">Ziel: {target}%</p>
+      <div className="flex justify-between text-[9px] text-muted-foreground">
+        <span>{pct}% von {target}% Ziel</span>
+        {targetG > 0 && <span className={color}>{targetG}g Ziel</span>}
+      </div>
     </div>
   )
 }
@@ -56,6 +60,8 @@ export default function NutritionPage() {
   const [newMeal, setNewMeal] = useState({ name: '', protein: '', carbs: '', fat: '', calories: '', type: 'snack' })
   const [calorieGoal, setCalorieGoal] = useState(0)
   const [fitnessGoal, setFitnessGoal] = useState('halten')
+  const [macroTargets, setMacroTargets] = useState({ protein: 30, carbs: 40, fat: 30 })
+  const [showMacroEdit, setShowMacroEdit] = useState(false)
   const [showCamera, setShowCamera] = useState(false)
   const [cameraMode, setCameraMode] = useState<'photo' | 'barcode'>('photo')
   const [analyzing, setAnalyzing] = useState(false)
@@ -81,6 +87,9 @@ export default function NutritionPage() {
     setWater(load<number>('levi_water_today', 0))
     setCalorieGoal(load<number>('levi_calorie_goal', 0))
     setFitnessGoal(load<string>('levi_fitness_goal', 'halten'))
+    const goal = load<string>('levi_fitness_goal', 'halten')
+    const defaultTargets = MACRO_TARGETS[goal] ?? MACRO_TARGETS.halten
+    setMacroTargets(load('levi_macro_targets', defaultTargets))
     const savedFast = load<string | null>('levi_fast_start', null)
     if (savedFast) setFastStart(new Date(savedFast))
   }, [])
@@ -266,30 +275,97 @@ export default function NutritionPage() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-1">
-              <Flame className="w-4 h-4 text-orange-400" />
-              <span className="text-xl font-bold text-orange-400">{totals.calories}</span>
-              {calorieGoal > 0 && <span className="text-xs text-muted-foreground">/ {calorieGoal} kcal</span>}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <Flame className="w-4 h-4 text-orange-400" />
+                <span className="text-xl font-bold text-orange-400">{totals.calories}</span>
+                {calorieGoal > 0 && <span className="text-xs text-muted-foreground">/ {calorieGoal} kcal</span>}
+              </div>
+              <button onClick={() => setShowMacroEdit(p => !p)}
+                className="text-muted-foreground hover:text-foreground transition-colors">
+                <SlidersHorizontal className="w-4 h-4" />
+              </button>
             </div>
           </div>
+
           {calorieGoal > 0 && (
             <Progress value={Math.min((totals.calories / calorieGoal) * 100, 100)} className="[&>div]:bg-orange-400" />
           )}
+
+          {/* Macro bars */}
           {(() => {
             const totalKcal = totals.protein * 4 + totals.carbs * 4 + totals.fat * 9
             const pPct = totalKcal > 0 ? Math.round(totals.protein * 4 / totalKcal * 100) : 0
             const cPct = totalKcal > 0 ? Math.round(totals.carbs  * 4 / totalKcal * 100) : 0
             const fPct = totalKcal > 0 ? Math.round(totals.fat    * 9 / totalKcal * 100) : 0
-            const targets = MACRO_TARGETS[fitnessGoal] ?? MACRO_TARGETS.halten
+            const tProteinG = calorieGoal > 0 ? Math.round(calorieGoal * macroTargets.protein / 100 / 4) : 0
+            const tCarbsG   = calorieGoal > 0 ? Math.round(calorieGoal * macroTargets.carbs   / 100 / 4) : 0
+            const tFatG     = calorieGoal > 0 ? Math.round(calorieGoal * macroTargets.fat     / 100 / 9) : 0
             return (
               <div className="grid grid-cols-3 gap-3 pt-1">
-                <MacroBar label="Protein" value={totals.protein} pct={pPct} target={targets.protein} color="text-blue-400" />
-                <MacroBar label="Kohlenhydr." value={totals.carbs} pct={cPct} target={targets.carbs} color="text-yellow-400" />
-                <MacroBar label="Fett" value={totals.fat} pct={fPct} target={targets.fat} color="text-purple-400" />
+                <MacroBar label="Protein"     value={totals.protein} pct={pPct} target={macroTargets.protein} targetG={tProteinG} color="text-blue-400" />
+                <MacroBar label="Kohlenhydr." value={totals.carbs}   pct={cPct} target={macroTargets.carbs}   targetG={tCarbsG}   color="text-yellow-400" />
+                <MacroBar label="Fett"        value={totals.fat}     pct={fPct} target={macroTargets.fat}     targetG={tFatG}     color="text-purple-400" />
               </div>
             )
           })()}
-          {calorieGoal === 0 && (
+
+          {/* Macro editor */}
+          {showMacroEdit && (() => {
+            const total = macroTargets.protein + macroTargets.carbs + macroTargets.fat
+            const ok = total === 100
+            const updateMacro = (key: 'protein' | 'carbs' | 'fat', val: number) => {
+              const updated = { ...macroTargets, [key]: Math.max(0, Math.min(100, val)) }
+              setMacroTargets(updated)
+              localStorage.setItem('levi_macro_targets', JSON.stringify(updated))
+            }
+            return (
+              <div className="bg-secondary rounded-xl p-3 space-y-3 mt-1">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium">Makro-Ziele anpassen</p>
+                  <span className={`text-xs font-bold ${ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {total}% {ok ? '✓' : '≠ 100%'}
+                  </span>
+                </div>
+                {([
+                  { key: 'protein' as const, label: 'Protein', color: 'text-blue-400', kcalPer: 4 },
+                  { key: 'carbs'   as const, label: 'Kohlenhydrate', color: 'text-yellow-400', kcalPer: 4 },
+                  { key: 'fat'     as const, label: 'Fett', color: 'text-purple-400', kcalPer: 9 },
+                ]).map(({ key, label, color, kcalPer }) => {
+                  const grams = calorieGoal > 0 ? Math.round(calorieGoal * macroTargets[key] / 100 / kcalPer) : null
+                  return (
+                    <div key={key} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className={`font-medium ${color}`}>{label}</span>
+                        <span className="text-muted-foreground">
+                          {grams !== null ? `${macroTargets[key]}% = ${grams}g` : `${macroTargets[key]}%`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => updateMacro(key, macroTargets[key] - 5)}
+                          className="w-7 h-7 rounded-lg bg-card flex items-center justify-center text-sm font-bold text-muted-foreground hover:text-foreground">−</button>
+                        <div className="flex-1 bg-card rounded-full h-2">
+                          <div className={`h-2 rounded-full ${color.replace('text-', 'bg-')}`}
+                            style={{ width: `${macroTargets[key]}%` }} />
+                        </div>
+                        <button onClick={() => updateMacro(key, macroTargets[key] + 5)}
+                          className="w-7 h-7 rounded-lg bg-card flex items-center justify-center text-sm font-bold text-muted-foreground hover:text-foreground">+</button>
+                        <Input type="number" value={macroTargets[key]}
+                          onChange={e => updateMacro(key, +e.target.value)}
+                          className="w-14 h-7 text-xs text-center bg-card border-border p-1" />
+                        <span className="text-xs text-muted-foreground">%</span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {calorieGoal === 0 && (
+                  <p className="text-[10px] text-muted-foreground text-center">Kalorienziel in Einstellungen setzen für Gramm-Anzeige</p>
+                )}
+              </div>
+            )
+          })()}
+
+          {calorieGoal === 0 && !showMacroEdit && (
             <p className="text-xs text-muted-foreground text-center">
               Fitnessziel in Einstellungen setzen → Kalorienziel wird berechnet
             </p>

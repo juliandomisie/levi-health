@@ -6,9 +6,9 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
-import { Moon, Heart, Save, TrendingUp, Trash2 } from 'lucide-react'
+import { Moon, Heart, Save, TrendingUp, Trash2, Sparkles, Loader2 } from 'lucide-react'
 
-type Entry = { date: string; bedtime: string; waketime: string; hours: number; hrv: number; quality: number }
+type Entry = { date: string; bedtime: string; waketime: string; hours: number; hrv: number; quality: number; aiScore?: number; aiComment?: string }
 
 function load<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback
@@ -20,8 +20,9 @@ export default function SleepPage() {
   const [waketime, setWaketime] = useState('')
   const [hrv, setHrv]           = useState('')
   const [quality, setQuality]   = useState<number[]>([7])
-  const [saved, setSaved]       = useState(false)
-  const [entries, setEntries]   = useState<Entry[]>([])
+  const [saved, setSaved]         = useState(false)
+  const [entries, setEntries]     = useState<Entry[]>([])
+  const [analyzing, setAnalyzing] = useState(false)
 
   useEffect(() => {
     setEntries(load<Entry[]>('levi_sleep_entries', []))
@@ -38,12 +39,13 @@ export default function SleepPage() {
 
   const hours = calcHours(bedtime, waketime)
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!bedtime || !waketime) return
+    const h = calcHours(bedtime, waketime)
     const entry: Entry = {
       date: new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
       bedtime, waketime,
-      hours: calcHours(bedtime, waketime),
+      hours: h,
       hrv: +hrv || 0,
       quality: quality[0],
     }
@@ -52,6 +54,22 @@ export default function SleepPage() {
     localStorage.setItem('levi_sleep_entries', JSON.stringify(updated))
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+
+    // AI analysis
+    if (h > 0) {
+      setAnalyzing(true)
+      try {
+        const res = await fetch('/api/analyze-sleep', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hours: h, hrv: +hrv || 0, quality: quality[0] }),
+        })
+        const { score, comment } = await res.json()
+        const withAI = [{ ...entry, aiScore: score, aiComment: comment }, ...entries].slice(0, 30)
+        setEntries(withAI)
+        localStorage.setItem('levi_sleep_entries', JSON.stringify(withAI))
+      } catch { /* skip silently */ }
+      setAnalyzing(false)
+    }
   }
 
   const deleteEntry = (i: number) => {
@@ -112,8 +130,9 @@ export default function SleepPage() {
               className="[&_[role=slider]]:bg-blue-400" />
           </div>
 
-          <Button onClick={handleSave} className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
-            {saved ? '✓ Gespeichert!' : <><Save className="w-4 h-4 mr-2" />Eintragen</>}
+          <Button onClick={handleSave} disabled={analyzing} className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
+            {analyzing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Levi analysiert...</> :
+              saved ? '✓ Gespeichert!' : <><Save className="w-4 h-4 mr-2" />Eintragen & analysieren</>}
           </Button>
         </CardContent>
       </Card>
@@ -176,18 +195,28 @@ export default function SleepPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             {entries.slice(0, 7).map((e, i) => (
-              <div key={i} className="flex items-center justify-between bg-secondary rounded-xl px-3 py-2">
-                <div>
-                  <span className="text-sm font-medium">{e.date}</span>
-                  <span className="text-xs text-muted-foreground ml-2">{e.bedtime} → {e.waketime}</span>
+              <div key={i} className="bg-secondary rounded-xl px-3 py-2 space-y-1">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-medium">{e.date}</span>
+                    <span className="text-xs text-muted-foreground ml-2">{e.bedtime} → {e.waketime}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-blue-400">{e.hours}h</span>
+                    {e.hrv > 0 && <span className="text-xs text-muted-foreground">HRV {Math.round(e.hrv * 100) / 100}</span>}
+                    {e.aiScore !== undefined && (
+                      <span className={`text-xs font-bold ${e.aiScore >= 8 ? 'text-emerald-400' : e.aiScore >= 5 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        <Sparkles className="w-3 h-3 inline mr-0.5" />{e.aiScore}/10
+                      </span>
+                    )}
+                    <button onClick={() => deleteEntry(i)} className="text-muted-foreground hover:text-red-400">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-bold text-blue-400">{e.hours}h</span>
-                  {e.hrv > 0 && <span className="text-xs text-muted-foreground">HRV {e.hrv}</span>}
-                  <button onClick={() => deleteEntry(i)} className="text-muted-foreground hover:text-red-400">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                {e.aiComment && (
+                  <p className="text-xs text-muted-foreground italic pl-1">{e.aiComment}</p>
+                )}
               </div>
             ))}
           </CardContent>

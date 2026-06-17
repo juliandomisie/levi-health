@@ -4,10 +4,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
-import { Utensils, Droplets, Timer, Plus, Flame, Camera, X, Trash2, QrCode, Loader2 } from 'lucide-react'
+import { Utensils, Droplets, Timer, Plus, Flame, Camera, X, Trash2, QrCode, Loader2, Target } from 'lucide-react'
 import jsQR from 'jsqr'
 
 type Meal = { id: number; type: string; name: string; protein: number; carbs: number; fat: number; calories: number }
+
+const FITNESS_GOALS: Record<string, { label: string; emoji: string; color: string }> = {
+  aufbau:  { label: 'Muskelaufbau',    emoji: '💪', color: 'text-blue-400' },
+  halten:  { label: 'Gewicht halten',  emoji: '⚖️', color: 'text-yellow-400' },
+  defizit: { label: 'Kaloriendefizit', emoji: '🔥', color: 'text-orange-400' },
+}
+
+const MACRO_TARGETS: Record<string, { protein: number; carbs: number; fat: number }> = {
+  aufbau:  { protein: 35, carbs: 45, fat: 20 },
+  halten:  { protein: 30, carbs: 40, fat: 30 },
+  defizit: { protein: 40, carbs: 35, fat: 25 },
+}
 
 const MEAL_TYPES = [
   { key: 'breakfast', label: 'Frühstück', emoji: '🌅' },
@@ -21,11 +33,18 @@ function load<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) ?? '') } catch { return fallback }
 }
 
-function MacroBar({ label, value, color }: { label: string; value: number; color: string }) {
+function MacroBar({ label, value, pct, target, color }: { label: string; value: number; pct: number; target: number; color: string }) {
   return (
-    <div className="flex justify-between text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={color + ' font-medium'}>{value}g</span>
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={color + ' font-medium'}>{value}g <span className="text-muted-foreground">({pct}%)</span></span>
+      </div>
+      <div className="w-full bg-secondary rounded-full h-1.5">
+        <div className={`h-1.5 rounded-full transition-all ${color.replace('text-', 'bg-')}`}
+          style={{ width: `${Math.min((pct / target) * 100, 100)}%` }} />
+      </div>
+      <p className="text-[9px] text-muted-foreground text-right">Ziel: {target}%</p>
     </div>
   )
 }
@@ -38,6 +57,7 @@ export default function NutritionPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [newMeal, setNewMeal] = useState({ name: '', protein: '', carbs: '', fat: '', calories: '', type: 'snack' })
   const [calorieGoal, setCalorieGoal] = useState(0)
+  const [fitnessGoal, setFitnessGoal] = useState('halten')
   const [showCamera, setShowCamera] = useState(false)
   const [cameraMode, setCameraMode] = useState<'photo' | 'qr'>('photo')
   const [analyzing, setAnalyzing] = useState(false)
@@ -59,6 +79,7 @@ export default function NutritionPage() {
     setMeals(load<Meal[]>('levi_meals_today', []))
     setWater(load<number>('levi_water_today', 0))
     setCalorieGoal(load<number>('levi_calorie_goal', 0))
+    setFitnessGoal(load<string>('levi_fitness_goal', 'halten'))
     const savedFast = load<string | null>('levi_fast_start', null)
     if (savedFast) setFastStart(new Date(savedFast))
   }, [])
@@ -172,7 +193,15 @@ export default function NutritionPage() {
       <Card className="bg-card border-border">
         <CardContent className="p-4 space-y-3">
           <div className="flex justify-between items-center">
-            <span className="text-sm font-semibold">Kalorien heute</span>
+            <div>
+              <span className="text-sm font-semibold">Kalorien heute</span>
+              {fitnessGoal && FITNESS_GOALS[fitnessGoal] && (
+                <div className={`flex items-center gap-1 mt-0.5 text-xs font-medium ${FITNESS_GOALS[fitnessGoal].color}`}>
+                  <Target className="w-3 h-3" />
+                  {FITNESS_GOALS[fitnessGoal].emoji} {FITNESS_GOALS[fitnessGoal].label}
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-1">
               <Flame className="w-4 h-4 text-orange-400" />
               <span className="text-xl font-bold text-orange-400">{totals.calories}</span>
@@ -182,11 +211,21 @@ export default function NutritionPage() {
           {calorieGoal > 0 && (
             <Progress value={Math.min((totals.calories / calorieGoal) * 100, 100)} className="[&>div]:bg-orange-400" />
           )}
-          <div className="grid grid-cols-3 gap-3 pt-1">
-            <MacroBar label="Protein" value={totals.protein} color="text-blue-400" />
-            <MacroBar label="Kohlenhydrate" value={totals.carbs} color="text-yellow-400" />
-            <MacroBar label="Fett" value={totals.fat} color="text-purple-400" />
-          </div>
+          {/* Macro breakdown with percentages */}
+          {(() => {
+            const totalKcal = totals.protein * 4 + totals.carbs * 4 + totals.fat * 9
+            const pPct = totalKcal > 0 ? Math.round(totals.protein * 4 / totalKcal * 100) : 0
+            const cPct = totalKcal > 0 ? Math.round(totals.carbs  * 4 / totalKcal * 100) : 0
+            const fPct = totalKcal > 0 ? Math.round(totals.fat    * 9 / totalKcal * 100) : 0
+            const targets = MACRO_TARGETS[fitnessGoal] ?? MACRO_TARGETS.halten
+            return (
+              <div className="grid grid-cols-3 gap-3 pt-1">
+                <MacroBar label="Protein" value={totals.protein} pct={pPct} target={targets.protein} color="text-blue-400" />
+                <MacroBar label="Kohlenhydr." value={totals.carbs} pct={cPct} target={targets.carbs} color="text-yellow-400" />
+                <MacroBar label="Fett" value={totals.fat} pct={fPct} target={targets.fat} color="text-purple-400" />
+              </div>
+            )
+          })()}
           {calorieGoal === 0 && (
             <p className="text-xs text-muted-foreground text-center">
               Fitnessziel in Einstellungen setzen → Kalorienziel wird berechnet

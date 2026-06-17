@@ -108,7 +108,7 @@ export default function DashboardPage() {
                 <p className="text-sm text-foreground/90 leading-relaxed">
                   {water > 0 && `Du hast heute ${water}ml Wasser getrunken. `}
                   {totalCalories > 0 && `Kalorien: ${totalCalories} kcal. `}
-                  {healthData.hrv && `HRV: ${healthData.hrv}ms. `}
+                  {healthData.hrv && `HRV: ${Math.round(healthData.hrv * 100) / 100}ms. `}
                   Weiter so!
                 </p>
               ) : (
@@ -123,7 +123,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-3">
         <ScoreCard icon={Moon}     label="Schlaf"       value={healthData.sleep_hours ?? '—'} unit={healthData.sleep_hours ? 'h' : ''} color="text-indigo-400" empty={!healthData.sleep_hours} />
-        <ScoreCard icon={Heart}    label="HRV"          value={healthData.hrv ?? '—'} unit={healthData.hrv ? 'ms' : ''} color="text-rose-400" empty={!healthData.hrv} />
+        <ScoreCard icon={Heart}    label="HRV"          value={healthData.hrv ? Math.round(healthData.hrv * 100) / 100 : '—'} unit={healthData.hrv ? 'ms' : ''} color="text-rose-400" empty={!healthData.hrv} />
         <ScoreCard icon={Zap}      label="Schritte"     value={healthData.steps ?? '—'} color="text-yellow-400" empty={!healthData.steps} />
         <ScoreCard icon={Dumbbell} label="Kalorien"     value={totalCalories || '—'} unit={totalCalories ? 'kcal' : ''} color="text-orange-400" empty={!totalCalories} />
         <ScoreCard icon={Droplets} label="Wasser"       value={water || '—'} unit={water ? 'ml' : ''} color="text-cyan-400" empty={!water} />

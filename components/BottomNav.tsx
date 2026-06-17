@@ -1,18 +1,18 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Moon, Utensils, Dumbbell, FlaskConical, MessageCircle, Settings, AlarmClock } from 'lucide-react'
+import { LayoutDashboard, Moon, Utensils, Dumbbell, FlaskConical, MessageCircle, Settings, PersonStanding } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const nav = [
-  { href: '/dashboard',  icon: LayoutDashboard, label: 'Home' },
-  { href: '/sleep',      icon: Moon,            label: 'Schlaf' },
-  { href: '/nutrition',  icon: Utensils,        label: 'Essen' },
-  { href: '/fitness',    icon: Dumbbell,        label: 'Fitness' },
-  { href: '/biomarkers', icon: FlaskConical,    label: 'Werte' },
-  { href: '/coach',      icon: MessageCircle,   label: 'Coach' },
-  { href: '/alarm',      icon: AlarmClock,      label: 'Wecker' },
-  { href: '/settings',   icon: Settings,        label: 'Settings' },
+  { href: '/dashboard',  icon: LayoutDashboard,  label: 'Home' },
+  { href: '/sleep',      icon: Moon,              label: 'Schlaf' },
+  { href: '/nutrition',  icon: Utensils,          label: 'Essen' },
+  { href: '/fitness',    icon: Dumbbell,          label: 'Fitness' },
+  { href: '/biomarkers', icon: FlaskConical,      label: 'Werte' },
+  { href: '/coach',      icon: MessageCircle,     label: 'Coach' },
+  { href: '/koerper',    icon: PersonStanding,    label: 'Körper' },
+  { href: '/settings',   icon: Settings,          label: 'Settings' },
 ]
 
 export function BottomNav() {

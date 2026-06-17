@@ -1,5 +1,5 @@
 const CACHE_NAME = 'levi-health-v2';
-const STATIC_ASSETS = ['/', '/dashboard', '/sleep', '/nutrition', '/fitness', '/biomarkers', '/coach', '/alarm', '/settings'];
+const STATIC_ASSETS = ['/', '/dashboard', '/sleep', '/nutrition', '/fitness', '/biomarkers', '/coach', '/koerper', '/settings'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(STATIC_ASSETS)).catch(() => {}));
@@ -83,7 +83,7 @@ self.addEventListener('notificationclick', (event) => {
       for (const client of clientList) {
         if ('focus' in client) return client.focus();
       }
-      if (clients.openWindow) return clients.openWindow('/alarm');
+      if (clients.openWindow) return clients.openWindow('/dashboard');
     })
   );
 });

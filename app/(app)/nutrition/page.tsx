@@ -32,20 +32,27 @@ function load<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) ?? '') } catch { return fallback }
 }
 
+const MACRO_COLORS: Record<string, string> = {
+  'text-blue-400':   '#60a5fa',
+  'text-yellow-400': '#facc15',
+  'text-purple-400': '#c084fc',
+}
+
 function MacroBar({ label, value, target, targetG, color }: { label: string; value: number; target: number; targetG: number; color: string }) {
+  const hex = MACRO_COLORS[color] ?? '#9ca3af'
   const progress = targetG > 0 ? Math.min((value / targetG) * 100, 100) : 0
   const remaining = targetG > 0 ? Math.max(0, targetG - value) : null
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
         <span className="text-muted-foreground font-medium">{label}</span>
-        <span className={color + ' font-bold'}>
+        <span style={{ color: hex }} className="font-bold">
           {value}g{targetG > 0 ? ` / ${targetG}g` : ''}
         </span>
       </div>
       <div className="w-full bg-secondary rounded-full h-2.5">
-        <div className={`h-2.5 rounded-full transition-all min-w-0 ${value > 0 ? color.replace('text-', 'bg-') : ''}`}
-          style={{ width: value > 0 ? `${Math.max(progress, 4)}%` : '0%' }} />
+        <div className="h-2.5 rounded-full transition-all"
+          style={{ width: value > 0 ? `${Math.max(progress, 4)}%` : '0%', backgroundColor: value > 0 ? hex : 'transparent' }} />
       </div>
       <p className="text-[9px] text-muted-foreground text-right">
         {remaining !== null ? `noch ${remaining}g` : `Ziel: ${target}%`}
@@ -383,8 +390,8 @@ export default function NutritionPage() {
                         <button onClick={() => updateMacro(key, macroTargets[key] - 5)}
                           className="w-7 h-7 rounded-lg bg-card flex items-center justify-center text-sm font-bold text-muted-foreground hover:text-foreground">−</button>
                         <div className="flex-1 bg-card rounded-full h-2">
-                          <div className={`h-2 rounded-full ${color.replace('text-', 'bg-')}`}
-                            style={{ width: `${macroTargets[key]}%` }} />
+                          <div className="h-2 rounded-full"
+                            style={{ width: `${macroTargets[key]}%`, backgroundColor: MACRO_COLORS[color] ?? '#9ca3af' }} />
                         </div>
                         <button onClick={() => updateMacro(key, macroTargets[key] + 5)}
                           className="w-7 h-7 rounded-lg bg-card flex items-center justify-center text-sm font-bold text-muted-foreground hover:text-foreground">+</button>

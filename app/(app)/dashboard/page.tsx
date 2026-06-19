@@ -44,8 +44,15 @@ export default function DashboardPage() {
     setWater(load('levi_water_today', 0))
     setMeals(load('levi_meals_today', []))
     setHour(new Date().getHours())
-    const localHealth = load('levi_health_today', {})
-    if (Object.keys(localHealth).length > 0) setHealthData(localHealth)
+    const localHealth = load<Record<string, number>>('levi_health_today', {})
+    // Fall back to manual sleep entry if no shortcut data
+    const sleepEntries = load<{ hours: number }[]>('levi_sleep_entries', [])
+    const manualSleep = sleepEntries[0]?.hours ?? null
+    const merged = {
+      ...localHealth,
+      sleep_hours: localHealth.sleep_hours || manualSleep,
+    }
+    if (Object.keys(merged).length > 0) setHealthData(merged)
   }
 
   const readFromSupabase = async () => {

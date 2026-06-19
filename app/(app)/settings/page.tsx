@@ -63,8 +63,9 @@ export default function SettingsPage() {
     setPushLoading(true)
     setPushStatus('')
     try {
+      if (!('Notification' in window)) { setPushStatus('Benachrichtigungen werden auf diesem Gerät nicht unterstützt'); setPushLoading(false); return }
       const perm = await Notification.requestPermission()
-      if (perm !== 'granted') { setPushStatus('Erlaubnis verweigert'); setPushLoading(false); return }
+      if (perm !== 'granted') { setPushStatus('Erlaubnis verweigert — bitte in iOS-Einstellungen erlauben'); setPushLoading(false); return }
 
       const reg = await navigator.serviceWorker.ready
       const existing = await reg.pushManager.getSubscription()

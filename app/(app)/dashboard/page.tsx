@@ -64,8 +64,15 @@ export default function DashboardPage() {
         .eq('id', 'levi_health_today')
         .single()
       if (row?.data && Object.keys(row.data).length > 0) {
-        setHealthData(row.data)
         localStorage.setItem('levi_health_today', JSON.stringify(row.data))
+        // Merge manual sleep so it doesn't disappear after Supabase load
+        const sleepEntries = load<{ hours: number }[]>('levi_sleep_entries', [])
+        const manualSleep = sleepEntries[0]?.hours ?? null
+        const supabaseData = row.data as Record<string, number>
+        setHealthData({
+          ...supabaseData,
+          sleep_hours: supabaseData.sleep_hours || manualSleep,
+        })
       }
     } catch {
       // Supabase not available, use localStorage

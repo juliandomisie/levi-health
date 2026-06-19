@@ -128,8 +128,9 @@ export default function SleepPage() {
               <Label className="text-xs text-muted-foreground">Schlafqualität</Label>
               <span className="text-sm font-bold text-blue-400">{quality[0]}/10</span>
             </div>
-            <Slider value={quality} onValueChange={(v) => setQuality(v as number[])} min={1} max={10} step={1}
-              className="[&_[role=slider]]:bg-blue-400" />
+            <input type="range" min={1} max={10} step={1} value={quality[0]}
+              onChange={e => setQuality([+e.target.value])}
+              className="w-full h-2 rounded-full appearance-none cursor-pointer accent-blue-400 bg-secondary" />
           </div>
 
           {error && <p className="text-xs text-red-400 text-center">{error}</p>}

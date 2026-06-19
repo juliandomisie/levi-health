@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Settings, Bell, Watch, Download, User, Target, Clock, CheckCircle } from 'lucide-react'
+import { createClient } from '@/utils/supabase/client'
 
 const FITNESS_GOALS = [
   { key: 'aufbau', label: 'Muskelaufbau', surplus: 300, emoji: '💪' },
@@ -44,6 +45,18 @@ export default function SettingsPage() {
     setVoice(load('levi_voice', false))
     setHandsfree(load('levi_handsfree', false))
     setPushSubscribed(load('levi_push_subscribed', false))
+
+    // Load from Supabase to restore settings across Safari/PWA
+    createClient().from('health_data').select('data').eq('id', 'levi_user_settings').single()
+      .then(({ data: row }) => {
+        if (!row?.data) return
+        const s = row.data as Record<string, string>
+        if (s.name)        { setName(s.name);               localStorage.setItem('levi_name', JSON.stringify(s.name)) }
+        if (s.age)         { setAge(s.age);                  localStorage.setItem('levi_age', JSON.stringify(s.age)) }
+        if (s.height)      { setHeight(s.height);            localStorage.setItem('levi_height', JSON.stringify(s.height)) }
+        if (s.weight)      { setWeight(s.weight);            localStorage.setItem('levi_weight', JSON.stringify(s.weight)) }
+        if (s.fitnessGoal) { setFitnessGoal(s.fitnessGoal); localStorage.setItem('levi_fitness_goal', JSON.stringify(s.fitnessGoal)) }
+      })
   }, [])
 
   const subscribePush = async () => {
@@ -84,6 +97,14 @@ export default function SettingsPage() {
     localStorage.setItem('levi_notif_times', JSON.stringify(notifTimes))
     localStorage.setItem('levi_voice', JSON.stringify(voice))
     localStorage.setItem('levi_handsfree', JSON.stringify(handsfree))
+
+    // Persist to Supabase so settings survive across Safari/PWA
+    createClient().from('health_data').upsert({
+      id: 'levi_user_settings',
+      data: { name, age, height, weight, fitnessGoal },
+      updated_at: new Date().toISOString(),
+    })
+
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -245,11 +266,11 @@ export default function SettingsPage() {
           <div className="bg-secondary rounded-xl p-3 text-xs text-muted-foreground space-y-2">
             <p className="font-medium text-foreground">Shortcut URL-Format (letzter Schritt):</p>
             <p className="font-mono text-[10px] break-all text-emerald-400">
-              https://levi-health.netlify.app/import?hrv=WERT&steps=WERT&calories=WERT&heart_rate=WERT&sleep_hours=WERT&workout_minutes=WERT
+              https://levi-health.vercel.app/import?hrv=WERT&steps=WERT&calories=WERT&heart_rate=WERT&sleep_hours=WERT&workout_minutes=WERT
             </p>
             <p className="text-[10px]">Im Shortcut: "URL öffnen" als letzter Schritt — ersetze WERT durch die jeweiligen Health-Variablen</p>
           </div>
-          <a href="shortcuts://import-shortcut?url=https%3A%2F%2Flevi-health.netlify.app%2Flevi-shortcut.shortcut&name=Levi%20Update">
+          <a href="shortcuts://import-shortcut?url=https%3A%2F%2Flevi-health.vercel.app%2Flevi-shortcut.shortcut&name=Levi%20Update">
             <Button size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
               Shortcut-Vorlage öffnen
             </Button>
